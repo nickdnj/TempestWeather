@@ -1,0 +1,16 @@
+[Unit]
+Description=Vistter YouTube RTSP Stream Service
+After=network.target wyse-bridge.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/vistter/config.env
+ExecStart=/usr/bin/env python3 /usr/local/bin/stream_with_overlay.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vistter
+
+[Install]
+WantedBy=multi-user.target 
