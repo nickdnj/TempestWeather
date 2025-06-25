@@ -1,6 +1,5 @@
 import socket
 import json
-import threading
 import time
 
 UDP_PORT = 50222
@@ -66,50 +65,42 @@ def determine_primary_condition(obs):
     else:
         return 'none'
 
-def get_current_conditions(timeout=30):
+def get_current_conditions():
     """
     Listen for Tempest UDP packets and return the latest current conditions as a dict.
+    Waits indefinitely until an obs_st packet is received.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(timeout)
     sock.bind(("", UDP_PORT))
-    latest_obs = None
-    latest_packet = None
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    print("Listening for Tempest UDP packets. Waiting for obs_st (observation) packet...")
+    while True:
         try:
             data, addr = sock.recvfrom(4096)
             msg = json.loads(data.decode())
             print("Received packet:", json.dumps(msg, indent=2))  # Debug print
             if msg.get("type") == "obs_st" and "obs" in msg and msg["obs"]:
                 obs = msg["obs"][0]
-                latest_obs = obs
-                latest_packet = msg
-                break  # Return on first valid obs_st
-        except socket.timeout:
-            break
+                # Extract fields
+                humidity = obs[8]
+                wind_speed = obs[2]
+                wind_direction_deg = obs[4]
+                wind_direction = degrees_to_compass(wind_direction_deg)
+                feels_like = obs[21] if obs[21] is not None else obs[7]
+                primary_condition = determine_primary_condition(obs)
+                icon = select_icon(primary_condition)
+                result = {
+                    "primary_condition": primary_condition,
+                    "icon": icon,
+                    "humidity": humidity,
+                    "wind_speed": wind_speed,
+                    "wind_direction": wind_direction,
+                    "feels_like": feels_like,
+                    "raw": msg
+                }
+                sock.close()
+                return result
         except Exception:
             continue
-    sock.close()
-    if not latest_obs:
-        return None
-    # Extract fields
-    humidity = latest_obs[8]
-    wind_speed = latest_obs[2]
-    wind_direction_deg = latest_obs[4]
-    wind_direction = degrees_to_compass(wind_direction_deg)
-    feels_like = latest_obs[21] if latest_obs[21] is not None else latest_obs[7]
-    primary_condition = determine_primary_condition(latest_obs)
-    icon = select_icon(primary_condition)
-    return {
-        "primary_condition": primary_condition,
-        "icon": icon,
-        "humidity": humidity,
-        "wind_speed": wind_speed,
-        "wind_direction": wind_direction,
-        "feels_like": feels_like,
-        "raw": latest_packet
-    }
 
 if __name__ == "__main__":
     result = get_current_conditions()
