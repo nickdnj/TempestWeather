@@ -1,0 +1,17 @@
+[Unit]
+Description=Update Tempest JSON with current weather conditions
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/vistter/config.env
+WorkingDirectory=/home/pi/TempestWeather
+ExecStart=/usr/bin/env python3 update_tempest_json.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=update_tempest_json
+
+[Install]
+WantedBy=multi-user.target 
