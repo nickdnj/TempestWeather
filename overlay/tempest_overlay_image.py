@@ -26,7 +26,8 @@ def create_tempest_overlay(data, output_path=None):
     icon_size = (90, 90)
     small_icon_size = (40, 40)
     padding = 24
-    spacing = 32
+    spacing = 24  # reduced spacing for tighter grouping
+    icon_value_spacing = 8  # space between icon and value
     bg_radius = 32
     bg_alpha = 180  # 0-255
     font_big = 64
@@ -39,25 +40,22 @@ def create_tempest_overlay(data, output_path=None):
     humidity_icon = load_icon('humidity.png', small_icon_size)
     wind_icon = load_icon('wind.png', small_icon_size)
 
-    # Prepare text
-    temp_text = f"{feels_like:.0f}" if isinstance(feels_like, (int, float)) else str(feels_like)
-    humidity_text = f"{humidity:.0f}" if isinstance(humidity, (int, float)) else str(humidity)
-    wind_text = f"{wind_speed:.0f}" if isinstance(wind_speed, (int, float)) else str(wind_speed)
-    wind_dir_text = str(wind_direction)
+    # Prepare text with units/symbols
+    temp_text = f"{feels_like:.0f}\u00B0" if isinstance(feels_like, (int, float)) else str(feels_like)
+    humidity_text = f"{humidity:.0f}%" if isinstance(humidity, (int, float)) else str(humidity)
+    wind_text = f"{wind_speed:.0f} mph {wind_direction}" if isinstance(wind_speed, (int, float)) else f"{wind_speed} {wind_direction}"
 
     # Measure text
     temp_size = font.getsize(temp_text)
     humidity_size = font_small_obj.getsize(humidity_text)
     wind_size = font_small_obj.getsize(wind_text)
-    wind_dir_size = font_small_obj.getsize(wind_dir_text)
 
     # Calculate total width
     width = (
         padding * 2 +
-        icon_size[0] + spacing +
-        temp_size[0] + spacing +
-        small_icon_size[0] + humidity_size[0] + spacing +
-        small_icon_size[0] + wind_size[0] + wind_dir_size[0]
+        icon_size[0] + icon_value_spacing + temp_size[0] + spacing +
+        small_icon_size[0] + icon_value_spacing + humidity_size[0] + spacing +
+        small_icon_size[0] + icon_value_spacing + wind_size[0]
     )
     height = max(icon_size[1], temp_size[1], small_icon_size[1] + humidity_size[1], small_icon_size[1] + wind_size[1]) + padding * 2
 
@@ -71,27 +69,23 @@ def create_tempest_overlay(data, output_path=None):
     x = padding
     y = (height - icon_size[1]) // 2
     overlay.paste(weather_icon, (x, y), weather_icon)
-    x += icon_size[0] + spacing
-
+    x += icon_size[0] + icon_value_spacing
     y = (height - temp_size[1]) // 2
     draw.text((x, y), temp_text, font=font, fill='white')
     x += temp_size[0] + spacing
 
     y = (height - small_icon_size[1]) // 2
     overlay.paste(humidity_icon, (x, y), humidity_icon)
-    x += small_icon_size[0]
+    x += small_icon_size[0] + icon_value_spacing
     y = (height - humidity_size[1]) // 2
     draw.text((x, y), humidity_text, font=font_small_obj, fill='white')
     x += humidity_size[0] + spacing
 
     y = (height - small_icon_size[1]) // 2
     overlay.paste(wind_icon, (x, y), wind_icon)
-    x += small_icon_size[0]
+    x += small_icon_size[0] + icon_value_spacing
     y = (height - wind_size[1]) // 2
     draw.text((x, y), wind_text, font=font_small_obj, fill='white')
-    x += wind_size[0]
-    y = (height - wind_dir_size[1]) // 2
-    draw.text((x, y), wind_dir_text, font=font_small_obj, fill='white')
 
     # Save or return
     if output_path:
@@ -110,7 +104,7 @@ if __name__ == "__main__":
         "primary_condition": "clear",
         "icon": "clear.png",
         "humidity": 55.02,
-        "wind_speed": 7.2,
+        "wind_speed": 10,
         "wind_direction": "W",
         "feels_like": 93.2,
         "units": "imperial"
