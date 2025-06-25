@@ -1,0 +1,17 @@
+[Unit]
+Description=Tempest Flask Overlay Server
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/vistter/config.env
+WorkingDirectory=/home/pi/TempestWeather/overlay
+ExecStart=/usr/bin/env python3 flask_overlay_server.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=flask_overlay
+
+[Install]
+WantedBy=multi-user.target 
