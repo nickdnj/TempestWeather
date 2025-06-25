@@ -66,7 +66,7 @@ def determine_primary_condition(obs):
     else:
         return 'none'
 
-def get_current_conditions(timeout=10):
+def get_current_conditions(timeout=30):
     """
     Listen for Tempest UDP packets and return the latest current conditions as a dict.
     """
@@ -80,6 +80,7 @@ def get_current_conditions(timeout=10):
         try:
             data, addr = sock.recvfrom(4096)
             msg = json.loads(data.decode())
+            print("Received packet:", json.dumps(msg, indent=2))  # Debug print
             if msg.get("type") == "obs_st" and "obs" in msg and msg["obs"]:
                 obs = msg["obs"][0]
                 latest_obs = obs
@@ -113,6 +114,7 @@ def get_current_conditions(timeout=10):
 if __name__ == "__main__":
     result = get_current_conditions()
     if result:
+        print("\nCurrent Conditions:")
         print(json.dumps(result, indent=2))
     else:
         print("No Tempest UDP data received. Make sure your device is on the same network and broadcasting.") 
