@@ -72,12 +72,12 @@ def get_current_conditions():
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("", UDP_PORT))
-    print("Listening for Tempest UDP packets. Waiting for obs_st (observation) packet...")
+    # print("Listening for Tempest UDP packets. Waiting for obs_st (observation) packet...")
     while True:
         try:
             data, addr = sock.recvfrom(4096)
             msg = json.loads(data.decode())
-            print("Received packet:", json.dumps(msg, indent=2))  # Debug print
+            # print("Received packet:", json.dumps(msg, indent=2))  # Debug print
             if msg.get("type") == "obs_st" and "obs" in msg and msg["obs"]:
                 obs = msg["obs"][0]
                 # Extract fields
@@ -85,7 +85,7 @@ def get_current_conditions():
                 wind_speed = obs[2]
                 wind_direction_deg = obs[4]
                 wind_direction = degrees_to_compass(wind_direction_deg)
-                feels_like = obs[21] if obs[21] is not None else obs[7]
+                feels_like = obs[21] if len(obs) > 21 and obs[21] is not None else obs[7]
                 primary_condition = determine_primary_condition(obs)
                 icon = select_icon(primary_condition)
                 result = {
@@ -105,7 +105,6 @@ def get_current_conditions():
 if __name__ == "__main__":
     result = get_current_conditions()
     if result:
-        print("\nCurrent Conditions:")
         print(json.dumps(result, indent=2))
     else:
         print("No Tempest UDP data received. Make sure your device is on the same network and broadcasting.") 
