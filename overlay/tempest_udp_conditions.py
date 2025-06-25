@@ -103,8 +103,7 @@ def get_current_conditions():
                     "wind_speed": wind_speed,
                     "wind_direction": wind_direction,
                     "feels_like": feels_like,
-                    "units": "imperial",
-                    "raw": msg
+                    "units": "imperial"
                 }
                 sock.close()
                 return result
