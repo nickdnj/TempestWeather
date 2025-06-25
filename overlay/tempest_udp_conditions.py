@@ -65,27 +65,35 @@ def determine_primary_condition(obs):
     else:
         return 'none'
 
+# Conversion helpers
+def ms_to_mph(ms):
+    return round(ms * 2.23694, 1) if ms is not None else None
+
+def c_to_f(c):
+    return round(c * 9/5 + 32, 1) if c is not None else None
+
 def get_current_conditions():
     """
     Listen for Tempest UDP packets and return the latest current conditions as a dict.
     Waits indefinitely until an obs_st packet is received.
+    All output values are in English (Imperial) units.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("", UDP_PORT))
-    # print("Listening for Tempest UDP packets. Waiting for obs_st (observation) packet...")
     while True:
         try:
             data, addr = sock.recvfrom(4096)
             msg = json.loads(data.decode())
-            # print("Received packet:", json.dumps(msg, indent=2))  # Debug print
             if msg.get("type") == "obs_st" and "obs" in msg and msg["obs"]:
                 obs = msg["obs"][0]
                 # Extract fields
-                humidity = obs[8]
-                wind_speed = obs[2]
+                humidity = obs[8]  # %
+                wind_speed_ms = obs[2]  # m/s
+                wind_speed = ms_to_mph(wind_speed_ms)  # mph
                 wind_direction_deg = obs[4]
                 wind_direction = degrees_to_compass(wind_direction_deg)
-                feels_like = obs[21] if len(obs) > 21 and obs[21] is not None else obs[7]
+                feels_like_c = obs[21] if len(obs) > 21 and obs[21] is not None else obs[7]
+                feels_like = c_to_f(feels_like_c)  # F
                 primary_condition = determine_primary_condition(obs)
                 icon = select_icon(primary_condition)
                 result = {
@@ -95,6 +103,7 @@ def get_current_conditions():
                     "wind_speed": wind_speed,
                     "wind_direction": wind_direction,
                     "feels_like": feels_like,
+                    "units": "imperial",
                     "raw": msg
                 }
                 sock.close()
