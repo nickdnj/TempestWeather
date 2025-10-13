@@ -44,7 +44,6 @@ def overlay_png():
     header_line_one = request.args.get("arg1", "").strip()
     header_line_two = request.args.get("arg2", "").strip()
     tide_station = request.args.get("tideStation") or request.args.get("tide_station")
-    tide_label = request.args.get("tideLabel") or request.args.get("tide_label") or ""
 
     observation = get_latest_observation()
     payload = build_display_payload(
@@ -53,7 +52,6 @@ def overlay_png():
         header_line_one,
         header_line_two,
         tide_station,
-        tide_label.strip(),
     )
     image_stream = render_overlay_image(payload, width, height, theme)
 

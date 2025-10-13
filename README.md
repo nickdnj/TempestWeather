@@ -50,11 +50,12 @@ GET /overlay.png
 | `theme`   | dark    | `dark` or `light` background                   |
 | `units`   | imperial| Display units (`imperial` or `metric`)         |
 | `arg1`    | —       | Optional heading line displayed above the data |
-| `arg2`    | —       | Second optional heading line below `arg1`      |
+| `arg2`    | —       | Second optional heading line (e.g., location)  |
+| `tideStation` | —   | NOAA tide-station ID for next high/low tide    |
 
 **Response**
 - `Content-Type: image/png`
-- Transparent PNG containing temperature, humidity, wind speed/direction, and timestamp. If supplied, `arg1`/`arg2` render as heading lines above the data row.
+- Transparent PNG containing temperature, humidity, wind speed/direction, timestamp, and (if `tideStation` is supplied) the next tide event/time. `arg1`/`arg2` render as heading lines above the data row.
 - Condition icons are sourced from `weather_icons/` based on Tempest precipitation, wind, solar, and humidity readings; nighttime packets fall back to `night.png`. Drop in your own PNGs to customize the look.
 
 **Environment variables**
@@ -65,7 +66,7 @@ GET /overlay.png
 Example:
 ```
 http://localhost:8080/overlay.png?width=960&height=220&theme=light&units=metric
-http://localhost:8080/overlay.png?arg1=Monmouth+Beach&arg2=Shrewsbury+River&tideStation=8531942&tideLabel=Shrewsbury+River
+http://localhost:8080/overlay.png?arg1=Monmouth+Beach&arg2=Shrewsbury+River&tideStation=8531942
 ```
 
 ## Integration with Vistter Stream

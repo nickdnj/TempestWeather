@@ -99,26 +99,22 @@ def build_display_payload(
     header_line_one: str = "",
     header_line_two: str = "",
     tide_station: Optional[str] = None,
-    tide_label: str = "",
 ) -> Dict[str, str]:
     units = "metric" if units.lower() == "metric" else "imperial"
 
     icon_name = _select_icon_name(observation)
     tide_event = get_next_tide_event(tide_station) if tide_station else None
     tide_icon_name: Optional[str] = None
-    tide_text: Optional[str] = None
+    tide_event_text: Optional[str] = None
+    tide_time_text: Optional[str] = None
     if tide_event:
         tide_icon_name = tide_event.icon_name
-        time_str = tide_event.event_time.strftime("%I:%M %p").lstrip("0")
-        if tide_label:
-            tide_text = f"{tide_label}: {tide_event.event_type} at {time_str}"
-        else:
-            tide_text = f"{tide_event.event_type} at {time_str}"
+        tide_event_text = tide_event.event_type
+        tide_time_text = tide_event.event_time.strftime("%I:%M %p").lstrip("0")
 
     tide_cache_key = (
         tide_event.event_type if tide_event else None,
         tide_event.event_time.isoformat() if tide_event else None,
-        tide_label,
     )
 
     if observation is None:
@@ -138,7 +134,8 @@ def build_display_payload(
             "updated": "Waiting for data…",
             "header1": header_line_one,
             "header2": header_line_two,
-            "tide_text": tide_text,
+            "tide_event": tide_event_text,
+            "tide_time": tide_time_text,
             "tide_icon_name": tide_icon_name,
             "cache_key": cache_key,
         }
@@ -188,7 +185,8 @@ def build_display_payload(
         "updated": updated,
         "header1": header_line_one,
         "header2": header_line_two,
-        "tide_text": tide_text,
+        "tide_event": tide_event_text,
+        "tide_time": tide_time_text,
         "tide_icon_name": tide_icon_name,
         "cache_key": cache_key,
     }
@@ -247,6 +245,9 @@ def render_overlay_image(
     temp_text = payload["temperature"]
     wind_text = payload["wind"]
     humidity_text = payload["humidity"]
+    tide_event_text = (payload.get("tide_event") or "").strip()
+    tide_time_text = (payload.get("tide_time") or "").strip()
+    tide_icon_name = payload.get("tide_icon_name") if tide_event_text and tide_time_text else None
 
     available_width = width - padding - inner_left
     primary_font_size = max(int(height * 0.32), 28)
@@ -257,10 +258,20 @@ def render_overlay_image(
         small_spacing = max(int(primary_font_size * 0.15), 8)
         wind_icon_size = max(int(primary_font_size * 0.8), 18)
         humidity_icon_size = max(int(primary_font_size * 0.8), 18)
+        tide_icon_size = max(int(primary_font_size * 0.8), 18) if tide_icon_name else 0
 
         temp_width, _ = _text_size(main_font, temp_text)
         wind_width, _ = _text_size(main_font, wind_text)
         humidity_width, _ = _text_size(main_font, humidity_text)
+        tide_event_width = tide_time_width = 0
+        if tide_icon_name:
+            tide_event_width, _ = _text_size(main_font, tide_event_text)
+            tide_time_font_size = max(int(primary_font_size * 0.7), 12)
+            tide_time_font = _load_font(tide_time_font_size)
+            tide_time_width, _ = _text_size(tide_time_font, tide_time_text)
+            tide_block_width = tide_icon_size + small_spacing + max(tide_event_width, tide_time_width)
+        else:
+            tide_block_width = 0
 
         total_primary_width = (
             temp_width
@@ -272,6 +283,7 @@ def render_overlay_image(
             + humidity_icon_size
             + small_spacing
             + humidity_width
+            + (spacing + tide_block_width if tide_icon_name else 0)
         )
         if total_primary_width <= available_width:
             break
@@ -282,6 +294,7 @@ def render_overlay_image(
     small_spacing = max(int(primary_font_size * 0.15), 8)
     wind_icon_size = max(int(primary_font_size * 0.8), 18)
     humidity_icon_size = max(int(primary_font_size * 0.8), 18)
+    tide_icon_size = max(int(primary_font_size * 0.8), 18) if tide_icon_name else 0
     footer_font_size = max(int(primary_font_size * 0.6), 14)
     footer_font = _load_font(footer_font_size)
     footer_offset = max(int(footer_font_size * 0.5), 10)
@@ -308,24 +321,27 @@ def render_overlay_image(
     cursor_x += humidity_icon.size[0] + small_spacing
 
     draw.text((cursor_x, inner_top), humidity_text, font=main_font, fill=primary_color)
-
-    tide_text = payload.get("tide_text")
-    tide_icon_name = payload.get("tide_icon_name") if tide_text else None
-
     footer_y = inner_top + primary_font_size + footer_offset
-    if tide_text:
-        tide_font_size = max(int(primary_font_size * 0.6), 14)
-        tide_font = _load_font(tide_font_size)
-        tide_icon_size = max(int(tide_font_size * 1.1), 18)
-        tide_icon = _load_icon(tide_icon_name, tide_icon_size) if tide_icon_name else None
-        tide_y = footer_y
-        tide_x = inner_left
-        if tide_icon:
-            icon_y = tide_y + max((tide_font_size - tide_icon.size[1]) // 2, 0)
-            image.paste(tide_icon, (int(tide_x), int(icon_y)), tide_icon)
-            tide_x += tide_icon.size[0] + small_spacing
-        draw.text((tide_x, tide_y), tide_text, font=tide_font, fill=primary_color)
-        footer_y = tide_y + tide_font_size + footer_offset
+
+    if tide_icon_name:
+        cursor_x += spacing
+        tide_icon = _load_icon(tide_icon_name, tide_icon_size)
+        tide_time_font_size = max(int(primary_font_size * 0.7), 12)
+        tide_time_font = _load_font(tide_time_font_size)
+        tide_line_gap = max(int(primary_font_size * 0.1), 4)
+        tide_block_height = primary_font_size + tide_line_gap + tide_time_font_size
+        tide_block_top = inner_top
+        icon_y = tide_block_top + max((tide_block_height - tide_icon.size[1]) // 2, 0)
+        image.paste(tide_icon, (int(cursor_x), int(icon_y)), tide_icon)
+        text_x = cursor_x + tide_icon.size[0] + small_spacing
+        draw.text((text_x, tide_block_top), tide_event_text, font=main_font, fill=primary_color)
+        draw.text(
+            (text_x, tide_block_top + primary_font_size + tide_line_gap),
+            tide_time_text,
+            font=tide_time_font,
+            fill=primary_color,
+        )
+        footer_y = tide_block_top + tide_block_height + footer_offset
 
     updated_line = f"Updated: {payload['updated']}"
     draw.text((inner_left, footer_y), updated_line, font=footer_font, fill=primary_color)

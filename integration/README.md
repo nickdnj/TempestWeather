@@ -37,7 +37,7 @@ A streaming pipeline that ingests a Wyze camera RTSP feed (via Wyse Bridge), app
 
 All configurable parameters are documented in `config.example.env`. Edit `.env` or set environment variables directly to override the defaults.
 
-- `OVERLAY_URL`: defaults to `http://tempest-overlay:8080/overlay.png`. Update if the Tempest overlay service is exposed at a different host/port. You can append overlay query params such as `tideStation=8531942&tideLabel=Shrewsbury+River` to render tide information.
+- `OVERLAY_URL`: defaults to `http://tempest-overlay:8080/overlay.png`. Update if the Tempest overlay service is exposed at a different host/port. You can append overlay query params such as `tideStation=8531942` to render tide information.
 
 - `RTSP_URL`: full RTSP feed URL override (e.g. with credentials); takes precedence over `RTSP_HOST`/`RTSP_PORT`/`CAMERA_NAME`.
 
