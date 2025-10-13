@@ -250,31 +250,23 @@ def render_overlay_image(
     tide_icon_name = payload.get("tide_icon_name") if tide_event_text and tide_time_text else None
 
     available_width = width - padding - inner_left
-    primary_font_size = max(int(height * 0.32), 32)
-    min_font_size = 24
-    while primary_font_size > min_font_size:
-        main_font = _load_font(primary_font_size)
-        spacing = max(int(padding * 0.7), 16)
-        small_spacing = max(int(primary_font_size * 0.15), 8)
-        wind_icon_size = max(int(primary_font_size * 0.8), 18)
-        humidity_icon_size = max(int(primary_font_size * 0.8), 18)
-        tide_icon_size = max(int(primary_font_size * 0.8), 18) if tide_icon_name else 0
+    min_font_size = 22
+    target_font_size = max(int(height * 0.32), 36)
 
+    def measure(font_size: int):
+        spacing = max(int(font_size * 0.35), 20)
+        small_spacing = max(int(font_size * 0.16), 8)
+        wind_icon_size = max(int(font_size * 0.82), 22)
+        humidity_icon_size = max(int(font_size * 0.82), 22)
+        tide_spacing = max(int(font_size * 0.45), spacing)
+        tide_icon_size = max(int(font_size * 0.9), 24) if tide_icon_name else 0
+
+        main_font = _load_font(font_size)
         temp_width, _ = _text_size(main_font, temp_text)
         wind_width, _ = _text_size(main_font, wind_text)
         humidity_width, _ = _text_size(main_font, humidity_text)
-        tide_event_width = tide_time_width = 0
-        tide_spacing = max(int(spacing * 1.2), spacing)
-        if tide_icon_name:
-            tide_event_width, _ = _text_size(main_font, tide_event_text)
-            tide_time_font_size = max(int(primary_font_size * 0.7), 12)
-            tide_time_font = _load_font(tide_time_font_size)
-            tide_time_width, _ = _text_size(tide_time_font, tide_time_text)
-            tide_block_width = tide_icon_size + small_spacing + max(tide_event_width, tide_time_width)
-        else:
-            tide_block_width = 0
 
-        total_primary_width = (
+        weather_width = (
             temp_width
             + spacing
             + wind_icon_size
@@ -285,18 +277,61 @@ def render_overlay_image(
             + small_spacing
             + humidity_width
         )
-        if total_primary_width <= available_width:
-            break
-        primary_font_size -= 2
 
-    main_font = _load_font(primary_font_size)
-    spacing = max(int(padding * 0.7), 16)
-    small_spacing = max(int(primary_font_size * 0.15), 8)
-    wind_icon_size = max(int(primary_font_size * 0.8), 18)
-    humidity_icon_size = max(int(primary_font_size * 0.8), 18)
-    tide_spacing = max(int(spacing * 1.2), spacing)
-    tide_icon_size = max(int(primary_font_size * 0.9), 20) if tide_icon_name else 0
-    footer_font_size = max(int(primary_font_size * 0.6), 14)
+        tide_block_width = 0
+        tide_time_font_size = 0
+        tide_time_font = None
+        if tide_icon_name:
+            tide_time_font_size = max(int(font_size * 0.55), 18)
+            tide_time_font = _load_font(tide_time_font_size)
+            event_width, _ = _text_size(main_font, tide_event_text)
+            time_width, _ = _text_size(tide_time_font, tide_time_text)
+            tide_block_width = tide_icon_size + small_spacing + max(event_width, time_width)
+            total_width = weather_width + tide_spacing + tide_block_width
+        else:
+            total_width = weather_width
+
+        return total_width, {
+            "font_size": font_size,
+            "main_font": main_font,
+            "spacing": spacing,
+            "small_spacing": small_spacing,
+            "wind_icon_size": wind_icon_size,
+            "humidity_icon_size": humidity_icon_size,
+            "tide_spacing": tide_spacing,
+            "tide_icon_size": tide_icon_size,
+            "tide_time_font_size": tide_time_font_size,
+            "tide_time_font": tide_time_font,
+            "tide_block_width": tide_block_width,
+            "weather_width": weather_width,
+        }
+
+    layout = None
+    font_size = target_font_size
+    while font_size >= min_font_size:
+        total_width, metrics = measure(font_size)
+        if total_width <= available_width:
+            layout = metrics
+            break
+        font_size -= 2
+
+    if layout is None:
+        _, layout = measure(min_font_size)
+
+    primary_font_size = layout["font_size"]
+    main_font = layout["main_font"]
+    spacing = layout["spacing"]
+    small_spacing = layout["small_spacing"]
+    wind_icon_size = layout["wind_icon_size"]
+    humidity_icon_size = layout["humidity_icon_size"]
+    tide_spacing = layout["tide_spacing"]
+    tide_icon_size = layout["tide_icon_size"]
+    tide_time_font_size = layout["tide_time_font_size"] or max(int(primary_font_size * 0.55), 18)
+    tide_time_font = layout["tide_time_font"] or _load_font(tide_time_font_size)
+    tide_block_width = layout["tide_block_width"]
+    weather_width = layout["weather_width"]
+
+    footer_font_size = max(int(primary_font_size * 0.58), 14)
     footer_font = _load_font(footer_font_size)
     footer_offset = max(int(footer_font_size * 0.5), 10)
 
@@ -326,17 +361,14 @@ def render_overlay_image(
 
     if tide_icon_name:
         tide_icon = _load_icon(tide_icon_name, tide_icon_size)
-        tide_time_font_size = max(int(primary_font_size * 0.75), 14)
-        tide_time_font = _load_font(tide_time_font_size)
         tide_line_gap = max(int(primary_font_size * 0.12), 6)
         tide_block_height = primary_font_size + tide_line_gap + tide_time_font_size
         tide_block_top = inner_top
-        tide_block_width = tide_icon.size[0] + small_spacing + max(
-            _text_size(main_font, tide_event_text)[0],
-            _text_size(tide_time_font, tide_time_text)[0],
-        )
-        tide_start = width - padding - tide_block_width
-        tide_start = max(tide_start, cursor_x + tide_spacing)
+        event_width, _ = _text_size(main_font, tide_event_text)
+        time_width, _ = _text_size(tide_time_font, tide_time_text)
+        tide_block_width = tide_icon.size[0] + small_spacing + max(event_width, time_width)
+        weather_end = inner_left + weather_width
+        tide_start = max(weather_end + tide_spacing, width - padding - tide_block_width)
         icon_y = tide_block_top + max((tide_block_height - tide_icon.size[1]) // 2, 0)
         image.paste(tide_icon, (int(tide_start), int(icon_y)), tide_icon)
         text_x = tide_start + tide_icon.size[0] + small_spacing
