@@ -13,6 +13,7 @@ except AttributeError:  # pragma: no cover - legacy Pillow fallback
     RESAMPLING_FILTER = Image.LANCZOS
 
 from tempest_listener import TempestObservation
+from tide_client import get_next_tide_event
 
 FONT_PATH = os.path.join(os.path.dirname(__file__), "../fonts/Arial.ttf")
 ICONS_DIR = os.path.join(os.path.dirname(__file__), "../weather_icons")
@@ -97,13 +98,38 @@ def build_display_payload(
     units: str,
     header_line_one: str = "",
     header_line_two: str = "",
+    tide_station: Optional[str] = None,
+    tide_label: str = "",
 ) -> Dict[str, str]:
     units = "metric" if units.lower() == "metric" else "imperial"
 
     icon_name = _select_icon_name(observation)
+    tide_event = get_next_tide_event(tide_station) if tide_station else None
+    tide_icon_name: Optional[str] = None
+    tide_text: Optional[str] = None
+    if tide_event:
+        tide_icon_name = tide_event.icon_name
+        time_str = tide_event.event_time.strftime("%I:%M %p").lstrip("0")
+        if tide_label:
+            tide_text = f"{tide_label}: {tide_event.event_type} at {time_str}"
+        else:
+            tide_text = f"{tide_event.event_type} at {time_str}"
+
+    tide_cache_key = (
+        tide_event.event_type if tide_event else None,
+        tide_event.event_time.isoformat() if tide_event else None,
+        tide_label,
+    )
 
     if observation is None:
-        cache_key = ("waiting", units, icon_name, header_line_one, header_line_two)
+        cache_key = (
+            "waiting",
+            units,
+            icon_name,
+            header_line_one,
+            header_line_two,
+            tide_cache_key,
+        )
         return {
             "icon_name": icon_name,
             "temperature": "--",
@@ -112,6 +138,8 @@ def build_display_payload(
             "updated": "Waiting for data…",
             "header1": header_line_one,
             "header2": header_line_two,
+            "tide_text": tide_text,
+            "tide_icon_name": tide_icon_name,
             "cache_key": cache_key,
         }
 
@@ -149,6 +177,7 @@ def build_display_payload(
         icon_name,
         header_line_one,
         header_line_two,
+        tide_cache_key,
     )
 
     return {
@@ -159,6 +188,8 @@ def build_display_payload(
         "updated": updated,
         "header1": header_line_one,
         "header2": header_line_two,
+        "tide_text": tide_text,
+        "tide_icon_name": tide_icon_name,
         "cache_key": cache_key,
     }
 
@@ -278,8 +309,25 @@ def render_overlay_image(
 
     draw.text((cursor_x, inner_top), humidity_text, font=main_font, fill=primary_color)
 
-    updated_line = f"Updated: {payload['updated']}"
+    tide_text = payload.get("tide_text")
+    tide_icon_name = payload.get("tide_icon_name") if tide_text else None
+
     footer_y = inner_top + primary_font_size + footer_offset
+    if tide_text:
+        tide_font_size = max(int(primary_font_size * 0.6), 14)
+        tide_font = _load_font(tide_font_size)
+        tide_icon_size = max(int(tide_font_size * 1.1), 18)
+        tide_icon = _load_icon(tide_icon_name, tide_icon_size) if tide_icon_name else None
+        tide_y = footer_y
+        tide_x = inner_left
+        if tide_icon:
+            icon_y = tide_y + max((tide_font_size - tide_icon.size[1]) // 2, 0)
+            image.paste(tide_icon, (int(tide_x), int(icon_y)), tide_icon)
+            tide_x += tide_icon.size[0] + small_spacing
+        draw.text((tide_x, tide_y), tide_text, font=tide_font, fill=primary_color)
+        footer_y = tide_y + tide_font_size + footer_offset
+
+    updated_line = f"Updated: {payload['updated']}"
     draw.text((inner_left, footer_y), updated_line, font=footer_font, fill=primary_color)
 
     buffer = io.BytesIO()

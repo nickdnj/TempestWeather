@@ -1,2 +1,5 @@
 flask
 pillow
+requests
+python-dateutil
+pytz

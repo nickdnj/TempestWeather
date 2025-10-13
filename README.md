@@ -65,6 +65,7 @@ GET /overlay.png
 Example:
 ```
 http://localhost:8080/overlay.png?width=960&height=220&theme=light&units=metric
+http://localhost:8080/overlay.png?arg1=Monmouth+Beach&arg2=Shrewsbury+River&tideStation=8531942&tideLabel=Shrewsbury+River
 ```
 
 ## Integration with Vistter Stream
