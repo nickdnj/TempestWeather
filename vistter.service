@@ -13,4 +13,4 @@ StandardError=journal
 SyslogIdentifier=vistter
 
 [Install]
-WantedBy=multi-user.target 
+WantedBy=multi-user.target

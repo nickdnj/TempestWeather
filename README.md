@@ -1,99 +1,84 @@
-# Weather Overlay Streaming System
+# Tempest Weather Overlay API
 
-## 1. Project Overview
-This project enables live streaming of RTSP video from a Wyze camera with a real-time weather overlay gadget, using data from a Tempest Weather Station. The system is designed to run fully locally on a Raspberry Pi 5, combining video streaming, weather data integration, and overlay rendering.
+Local-first image generator that turns a Tempest weather station broadcast into a PNG overlay suitable for live streaming. The service is intentionally lightweight—no external API keys, databases, or authentication—and is designed to run as a sidecar next to the Vistter streaming pipeline.
 
-## 2. System Architecture
-- **Wyze Camera** streams RTSP video via [wyze-bridge](https://github.com/mrlt8/docker-wyze-bridge) running on the Raspberry Pi.
-- **Tempest Weather Station** provides real-time weather data via the Tempest REST API (or optionally, local UDP broadcast).
-- **Flask Overlay Server** generates a weather overlay PNG image in memory, served via HTTP.
-- **FFmpeg** composites the overlay image onto the video stream for live streaming (e.g., to YouTube).
+## Architecture
+- **Tempest Weather Station** broadcasts UDP packets (`obs_st`) on the local network.
+- **Overlay Service** listens for the packets, keeps the latest observation in memory, and renders a PNG overlay on demand.
+- **Vistter Stream / FFmpeg** requests the PNG (`/overlay.png`) and composites it onto the camera feed before pushing to YouTube or other RTMP endpoints.
 
 ```
-[Wyze Camera] --(RTSP)--> [Raspberry Pi: wyze-bridge] --(video)--> [FFmpeg + Overlay] --(stream)--> [YouTube or other]
-                                             ^
-                                             |
-                        [Flask Overlay Server <--- Tempest Weather Station]
+[Tempest Station] --(UDP obs_st)--> [Tempest Overlay API] --(PNG over HTTP)--> [FFmpeg/Vistter Stream] --(RTMP)--> Platform
 ```
 
-## 3. Setup Instructions
-1. **Set up wyze-bridge** on your Raspberry Pi to expose the RTSP stream from your Wyze camera.
-2. **Install dependencies** for the overlay server:
-   ```bash
-   conda create -n weather-overlay python=3.11
-   conda activate weather-overlay
-   pip install -r requirements.txt
-   ```
-3. **Configure Tempest API access**:
-   - Generate a personal access token from your Tempest account ([instructions](https://apidocs.tempestwx.com/reference/quick-start)).
-   - Set the token in your overlay code or as an environment variable.
-4. **Run the Flask overlay server**:
-   ```bash
-   python overlay/flask_overlay_server.py
-   ```
-5. **Use FFmpeg to composite the overlay image onto the video stream** (see Streaming Pipeline below).
+## Running the Overlay Service
 
-## 4. Tempest API Integration
-- The overlay server fetches current weather data from the Tempest Weather Station using the REST API and your personal access token.
-- Example API call to get latest station observation:
-  ```
-  https://swd.weatherflow.com/swd/rest/observations/station/[your_station_id]?token=[your_access_token]
-  ```
-- For fully offline use, you may use the Tempest local UDP broadcast interface (see [Tempest API docs](https://apidocs.tempestwx.com/reference/quick-start)).
+### Python (local development)
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python overlay/flask_overlay_server.py
+```
+By default the server listens on `0.0.0.0:8080`.
 
-## 5. Streaming Pipeline
-- **FFmpeg** is used to overlay the weather PNG onto the RTSP video stream in real time.
-- Example FFmpeg command:
-  ```bash
-  ffmpeg -i rtsp://<wyze-bridge-rtsp-url> -i http://localhost:5000/overlay -filter_complex "overlay=10:10" -f flv rtmp://a.rtmp.youtube.com/live2/<stream-key>
-  ```
-- Adjust overlay position and output as needed.
+### Docker
+```
+docker build -t tempest-overlay .
+docker run --network host --restart unless-stopped --name tempest-overlay tempest-overlay
+```
+The container exposes port `8080` (configurable with `FLASK_PORT`) and requires access to the Tempest UDP broadcast, so host networking is recommended.
 
-## 6. Example Usage
-- Start the overlay server:
-  ```bash
-  python overlay/flask_overlay_server.py
-  ```
-- Start the FFmpeg pipeline (replace URLs and keys as needed):
-  ```bash
-  ffmpeg -i rtsp://raspi.local:8554/camera -i http://localhost:5000/overlay -filter_complex "overlay=10:10" -f flv rtmp://a.rtmp.youtube.com/live2/your-stream-key
-  ```
+### Docker Compose (recommended for continuous operation)
+```
+docker compose up -d
+```
+This uses `docker-compose.yml` to build the image, run it with host networking, and restart automatically after failures or reboots.
 
-## 7. Requirements
-- Raspberry Pi 5 (or similar Linux SBC)
-- Wyze camera(s) and wyze-bridge
-- Tempest Weather Station (on same network)
-- Python 3.11, Flask, Pillow, Requests
-- FFmpeg
+## API
 
-## 8. References
-- [Tempest API Quick Start](https://apidocs.tempestwx.com/reference/quick-start)
-- [wyze-bridge GitHub](https://github.com/mrlt8/docker-wyze-bridge)
-- [FFmpeg Documentation](https://ffmpeg.org/)
+```
+GET /overlay.png
+```
 
-## 9. Streaming Pipeline Integration
+**Optional query parameters**
 
-This project incorporates the robust streaming pipeline from the Vistter project:
+| Parameter | Default | Description                                    |
+|-----------|---------|------------------------------------------------|
+| `width`   | 800     | Output width in pixels (320–1920)              |
+| `height`  | 200     | Output height in pixels (120–600)              |
+| `theme`   | dark    | `dark` or `light` background                   |
+| `units`   | imperial| Display units (`imperial` or `metric`)         |
+| `arg1`    | —       | Optional heading line displayed above the data |
+| `arg2`    | —       | Second optional heading line below `arg1`      |
 
-- **integration/stream_with_overlay.py**: Python wrapper for streaming RTSP from Wyze Bridge, fetching overlay images, and streaming to YouTube Live via FFmpeg.
-- **integration/vistter.service**: Systemd unit for running the pipeline as a managed service.
-- **integration/config.example.env**: Example environment configuration for all pipeline variables.
-- **integration/PRODUCT_REQUIREMENTS_SPEC.md**: Full product requirements for the streaming pipeline.
-- **integration/README.md**: Additional usage and troubleshooting documentation.
+**Response**
+- `Content-Type: image/png`
+- Transparent PNG containing temperature, humidity, wind speed/direction, and timestamp. If supplied, `arg1`/`arg2` render as heading lines above the data row.
+- Condition icons are sourced from `weather_icons/` based on Tempest precipitation, wind, solar, and humidity readings; nighttime packets fall back to `night.png`. Drop in your own PNGs to customize the look.
 
-**To use:**
-1. Copy or symlink the files in `integration/` as needed.
-2. Set `OVERLAY_URL` in your `.env` to your local Flask overlay server (e.g., `http://localhost:5000/overlay?...`).
-3. Start the service with systemd or run the script manually:
-   ```bash
-   python integration/stream_with_overlay.py
-   ```
+**Environment variables**
+- `FLASK_PORT` (default `8080`) — HTTP port exposed by the overlay container/service.
+- `TEMPEST_UDP_BIND` (default listen on all interfaces) — bind address for the UDP listener.
+- `TEMPEST_UDP_PORT` (default `50222`) — Tempest UDP broadcast port.
 
-All configuration is managed via environment variables. See `integration/config.example.env` for all options.
+Example:
+```
+http://localhost:8080/overlay.png?width=960&height=220&theme=light&units=metric
+```
 
-## 10. References
+## Integration with Vistter Stream
+- `stream_with_overlay.py` (root, `integration/`, and `vistter/`) defaults to `http://tempest-overlay:8080/overlay.png`.
+- Update `OVERLAY_URL` in your `.env` if the service runs elsewhere.
+- Ensure the Vistter service and overlay container share a network so FFmpeg can fetch the PNG.
 
-- [Vistter Product Requirements Spec](integration/PRODUCT_REQUIREMENTS_SPEC.md)
-- [Vistter README](integration/README.md)
+## Development Notes
+- The overlay renderer caches PNG outputs per `(width, height, theme, observation)` to avoid redundant render work.
+- The Tempest listener runs as a background thread and keeps only the latest observation—no files on disk.
+- Fonts live in `fonts/` (`Arial.ttf`). If the font cannot be loaded the service falls back to Pillow's default bitmap font.
 
-**Note:** In the setup instructions above, you can use the integrated streaming pipeline for end-to-end streaming with overlay. See Section 9 for details.
+## Related Assets
+- `integration/` — scripts and unit files for deploying the FFmpeg pipeline.
+- `vistter/` — legacy wrapper and documentation for the Vistter streaming project.
+
+For details on the streaming pipeline itself, see `integration/README.md` and `integration/PRODUCT_REQUIREMENTS_SPEC.md`.

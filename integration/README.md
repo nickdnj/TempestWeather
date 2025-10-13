@@ -37,6 +37,10 @@ A streaming pipeline that ingests a Wyze camera RTSP feed (via Wyse Bridge), app
 
 All configurable parameters are documented in `config.example.env`. Edit `.env` or set environment variables directly to override the defaults.
 
+- `OVERLAY_URL`: defaults to `http://tempest-overlay:8080/overlay.png`. Update if the Tempest overlay service is exposed at a different host/port.
+
+- `RTSP_URL`: full RTSP feed URL override (e.g. with credentials); takes precedence over `RTSP_HOST`/`RTSP_PORT`/`CAMERA_NAME`.
+
 Additional FFmpeg encoding options (for output quality and bitrate) can be configured via environment variables:
 
 - `VIDEO_BITRATE`: target video bitrate (e.g., 2500k)

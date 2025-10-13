@@ -76,9 +76,7 @@ def main():
     CAMERA_NAME = os.getenv('CAMERA_NAME', 'poolhouse')
     OVERLAY_URL = os.getenv(
         'OVERLAY_URL',
-        'https://d3marco-service-2zlhs2gz7q-uk.a.run.app/seaer_ai/current_weather_tides/'
-        '?location1=Shrewsberry+River&location2=Monmouth+Beach+NJ&'
-        'stationName=8531942&api_key=7l0cOnQrBPq_DjYrShp_oyt9VkI7PoluiNj0Dcl9aQE'
+        'http://tempest-overlay:8080/overlay.png'
     )
     OVERLAY_MARGIN = os.getenv('OVERLAY_MARGIN', '20')
     raw_poll = os.getenv('OVERLAY_POLL_INTERVAL', '60')
@@ -91,6 +89,12 @@ def main():
     )
     # Microseconds to wait for network I/O before aborting FFmpeg (rw_timeout)
     FFMPEG_RW_TIMEOUT = os.getenv('FFMPEG_RW_TIMEOUT', '5000000')
+
+    # RTSP feed URL (override via RTSP_URL env var if needed, e.g. with credentials)
+    RTSP_URL = os.getenv(
+        'RTSP_URL', f'rtsp://{RTSP_HOST}:{RTSP_PORT}/{CAMERA_NAME}'
+    )
+    logger.info('Using RTSP URL: %s', RTSP_URL)
 
     # Verify overlay URL before starting
     if not OVERLAY_URL:
@@ -148,7 +152,7 @@ def main():
             '-rtsp_transport', 'tcp',
             '-thread_queue_size', '2048',
             '-t', SEGMENT_DURATION,
-            '-i', f'rtsp://{RTSP_HOST}:{RTSP_PORT}/{CAMERA_NAME}',
+            '-i', RTSP_URL,
             '-f', 'image2pipe', '-framerate', '1/60',
             '-i', OVERLAY_FIFO,
             '-f', 'lavfi', '-i', 'anullsrc',

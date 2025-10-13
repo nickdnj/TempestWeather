@@ -1,33 +1,63 @@
-# requirements: flask, pillow
-from flask import Flask, send_file
-import io
-import json
 import os
-from tempest_overlay_image import create_tempest_overlay
+
+from flask import Flask, Response, request, send_file
+
+from tempest_listener import get_latest_observation
+from tempest_overlay_image import build_display_payload, render_overlay_image
 
 app = Flask(__name__)
 
-# Path to the latest Tempest JSON data (update as needed)
-DATA_PATH = os.getenv('TEMPEST_JSON_PATH', '/tmp/tempest_latest.json')
+DEFAULT_WIDTH = 800
+DEFAULT_HEIGHT = 200
+MIN_WIDTH, MAX_WIDTH = 320, 1920
+MIN_HEIGHT, MAX_HEIGHT = 120, 600
 
-@app.route('/overlay')
-def overlay():
-    # Try to load the latest data from file, fallback to example
+
+def _parse_int(value: str | None, default: int, minimum: int, maximum: int) -> int:
+    if value is None:
+        return default
     try:
-        with open(DATA_PATH, 'r') as f:
-            data = json.load(f)
-    except Exception:
-        data = {
-            "primary_condition": "clear",
-            "icon": "clear.png",
-            "humidity": 55.02,
-            "wind_speed": 10,
-            "wind_direction": "W",
-            "feels_like": 93.2,
-            "units": "imperial"
-        }
-    img_bytes = create_tempest_overlay(data)
-    return send_file(img_bytes, mimetype='image/png')
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(parsed, maximum))
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5050) 
+
+@app.route("/")
+def index() -> Response:
+    return Response(
+        "Tempest Weather Overlay service. Fetch PNG overlays from /overlay.png",
+        mimetype="text/plain",
+    )
+
+
+@app.route("/overlay.png")
+def overlay_png():
+    width = _parse_int(
+        request.args.get("width"), DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH
+    )
+    height = _parse_int(
+        request.args.get("height"), DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT
+    )
+    theme = request.args.get("theme", "dark")
+    units = request.args.get("units", "imperial")
+    header_line_one = request.args.get("arg1", "").strip()
+    header_line_two = request.args.get("arg2", "").strip()
+
+    observation = get_latest_observation()
+    payload = build_display_payload(
+        observation,
+        units,
+        header_line_one,
+        header_line_two,
+    )
+    image_stream = render_overlay_image(payload, width, height, theme)
+
+    response = send_file(image_stream, mimetype="image/png")
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+if __name__ == "__main__":
+    port = int(os.getenv("FLASK_PORT", "8080"))
+    app.run(host="0.0.0.0", port=port)
