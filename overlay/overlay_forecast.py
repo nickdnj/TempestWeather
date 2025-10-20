@@ -1,0 +1,482 @@
+"""
+Forecast overlay module for Tempest weather data.
+Fetches forecast data from Tempest public API and renders overlay images
+matching the style of the current conditions overlay.
+"""
+from __future__ import annotations
+
+import io
+import os
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
+
+import requests
+from PIL import Image, ImageDraw, ImageFont
+
+# Reuse the same rendering utilities from the existing overlay module
+try:
+    RESAMPLING_FILTER = Image.Resampling.LANCZOS
+except AttributeError:
+    RESAMPLING_FILTER = Image.LANCZOS
+
+# Import shared utilities from existing overlay code
+from tempest_overlay_image import (
+    FONT_PATH,
+    ICONS_DIR,
+    THEME_STYLES,
+    _load_font,
+    _text_size,
+    _load_icon,
+)
+
+# Tempest API configuration
+TEMPEST_API_BASE = "https://swd.weatherflow.com/swd/rest/better_forecast"
+TEMPEST_API_KEY = os.getenv("TEMPEST_API_KEY", "")
+TEMPEST_STATION_ID = os.getenv("TEMPEST_STATION_ID", "")
+
+# Icon mapping from Tempest API icon names to local icon files
+FORECAST_ICON_MAP = {
+    "clear-day": "clear.png",
+    "clear-night": "night.png",
+    "cloudy": "clouds.png",
+    "foggy": "fog.png",
+    "partly-cloudy-day": "clouds.png",
+    "partly-cloudy-night": "night.png",
+    "possibly-rainy-day": "drizzle.png",
+    "possibly-rainy-night": "drizzle.png",
+    "possibly-sleet-day": "snow.png",
+    "possibly-sleet-night": "snow.png",
+    "possibly-snow-day": "snow.png",
+    "possibly-snow-night": "snow.png",
+    "possibly-thunderstorm-day": "thunderstorm.png",
+    "possibly-thunderstorm-night": "thunderstorm.png",
+    "rainy": "rain.png",
+    "sleet": "snow.png",
+    "snow": "snow.png",
+    "thunderstorm": "thunderstorm.png",
+    "windy": "wind.png",
+}
+
+
+def fetch_forecast_data(units: str = "imperial") -> Optional[Dict]:
+    """
+    Fetch forecast data from Tempest public API.
+    
+    Args:
+        units: 'imperial' or 'metric'
+    
+    Returns:
+        Forecast data dictionary or None if request fails
+    """
+    if not TEMPEST_API_KEY or not TEMPEST_STATION_ID:
+        return None
+    
+    # Map to Tempest API units format
+    if units == "metric":
+        units_temp = "c"
+        units_wind = "kph"
+        units_pressure = "mb"
+        units_precip = "mm"
+        units_distance = "km"
+    else:
+        units_temp = "f"
+        units_wind = "mph"
+        units_pressure = "inhg"
+        units_precip = "in"
+        units_distance = "mi"
+    
+    params = {
+        "station_id": TEMPEST_STATION_ID,
+        "token": TEMPEST_API_KEY,
+        "units_temp": units_temp,
+        "units_wind": units_wind,
+        "units_pressure": units_pressure,
+        "units_precip": units_precip,
+        "units_distance": units_distance,
+    }
+    
+    try:
+        response = requests.get(TEMPEST_API_BASE, params=params, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except (requests.RequestException, ValueError) as e:
+        print(f"Error fetching forecast data: {e}")
+        return None
+
+
+def build_daily_forecast_payload(units: str = "imperial") -> Dict:
+    """
+    Build payload for daily forecast overlay.
+    
+    Args:
+        units: 'imperial' or 'metric'
+    
+    Returns:
+        Dictionary with forecast data formatted for rendering
+    """
+    forecast_data = fetch_forecast_data(units)
+    
+    if not forecast_data or "forecast" not in forecast_data:
+        return {
+            "error": True,
+            "title": "Daily Forecast",
+            "message": "Unable to fetch forecast data",
+            "cache_key": ("error", "daily", units),
+        }
+    
+    daily_forecasts = forecast_data.get("forecast", {}).get("daily", [])
+    if not daily_forecasts:
+        return {
+            "error": True,
+            "title": "Daily Forecast",
+            "message": "No forecast data available",
+            "cache_key": ("empty", "daily", units),
+        }
+    
+    # Get today's forecast
+    today = daily_forecasts[0]
+    
+    # Extract data
+    high_temp = today.get("air_temp_high")
+    low_temp = today.get("air_temp_low")
+    conditions = today.get("conditions", "Unknown")
+    precip_prob = today.get("precip_probability", 0)
+    icon_name = today.get("icon", "unknown")
+    
+    # Format temperature
+    unit_symbol = "°F" if units == "imperial" else "°C"
+    temp_range = f"{int(high_temp)}{unit_symbol} / {int(low_temp)}{unit_symbol}" if high_temp and low_temp else "--"
+    
+    # Map icon name to local icon file
+    local_icon = FORECAST_ICON_MAP.get(icon_name, "unknown.png")
+    
+    # Get day name
+    day_start = today.get("day_start_local")
+    if day_start:
+        day_dt = datetime.fromtimestamp(day_start, tz=timezone.utc).astimezone()
+        day_name = "Today"
+    else:
+        day_name = "Today"
+    
+    cache_key = (
+        "daily",
+        today.get("day_num"),
+        today.get("month_num"),
+        high_temp,
+        low_temp,
+        conditions,
+        precip_prob,
+        units,
+    )
+    
+    return {
+        "error": False,
+        "title": "Today's Forecast",
+        "day_name": day_name,
+        "temp_range": temp_range,
+        "conditions": conditions,
+        "precip_prob": f"{precip_prob}%",
+        "icon_name": local_icon,
+        "cache_key": cache_key,
+    }
+
+
+def build_5day_forecast_payload(units: str = "imperial") -> Dict:
+    """
+    Build payload for 5-day forecast overlay.
+    
+    Args:
+        units: 'imperial' or 'metric'
+    
+    Returns:
+        Dictionary with 5-day forecast data formatted for rendering
+    """
+    forecast_data = fetch_forecast_data(units)
+    
+    if not forecast_data or "forecast" not in forecast_data:
+        return {
+            "error": True,
+            "title": "5-Day Forecast",
+            "message": "Unable to fetch forecast data",
+            "cache_key": ("error", "5day", units),
+        }
+    
+    daily_forecasts = forecast_data.get("forecast", {}).get("daily", [])
+    if len(daily_forecasts) < 5:
+        return {
+            "error": True,
+            "title": "5-Day Forecast",
+            "message": "Insufficient forecast data",
+            "cache_key": ("insufficient", "5day", units),
+        }
+    
+    # Build list of 5 days
+    days = []
+    unit_symbol = "°F" if units == "imperial" else "°C"
+    
+    for i, day_data in enumerate(daily_forecasts[:5]):
+        high_temp = day_data.get("air_temp_high")
+        low_temp = day_data.get("air_temp_low")
+        conditions = day_data.get("conditions", "Unknown")
+        icon_name = day_data.get("icon", "unknown")
+        day_start = day_data.get("day_start_local")
+        
+        # Get day name
+        if day_start:
+            day_dt = datetime.fromtimestamp(day_start, tz=timezone.utc).astimezone()
+            if i == 0:
+                day_name = "Today"
+            elif i == 1:
+                day_name = "Tomorrow"
+            else:
+                day_name = day_dt.strftime("%a")  # Mon, Tue, etc.
+        else:
+            day_name = f"Day {i+1}"
+        
+        # Format temperature
+        temp_text = f"{int(high_temp)}/{int(low_temp)}{unit_symbol}" if high_temp and low_temp else "--"
+        
+        # Map icon
+        local_icon = FORECAST_ICON_MAP.get(icon_name, "unknown.png")
+        
+        days.append({
+            "day_name": day_name,
+            "temp_text": temp_text,
+            "conditions": conditions,
+            "icon_name": local_icon,
+        })
+    
+    cache_key = (
+        "5day",
+        tuple((d["day_name"], d["temp_text"], d["conditions"]) for d in days),
+        units,
+    )
+    
+    return {
+        "error": False,
+        "title": "5-Day Forecast",
+        "days": days,
+        "cache_key": cache_key,
+    }
+
+
+def render_daily_forecast_overlay(
+    payload: Dict, width: int, height: int, theme: str
+) -> io.BytesIO:
+    """
+    Render daily forecast overlay image matching the style of current conditions overlay.
+    
+    Args:
+        payload: Daily forecast data from build_daily_forecast_payload
+        width: Image width in pixels
+        height: Image height in pixels
+        theme: 'dark' or 'light'
+    
+    Returns:
+        BytesIO buffer containing PNG image
+    """
+    theme = theme.lower()
+    style = THEME_STYLES.get(theme, THEME_STYLES["dark"])
+    
+    # Create transparent image
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    
+    padding = max(int(height * 0.06), 24)
+    primary_color = style["text"]
+    
+    if payload.get("error"):
+        # Render error message
+        title_font_size = max(int(height * 0.25), 48)
+        title_font = _load_font(title_font_size)
+        message_font_size = max(int(height * 0.15), 32)
+        message_font = _load_font(message_font_size)
+        
+        title = payload.get("title", "Forecast Error")
+        message = payload.get("message", "Unable to load forecast")
+        
+        # Center title
+        title_width, title_height = _text_size(title_font, title)
+        title_x = (width - title_width) // 2
+        title_y = padding
+        draw.text((title_x, title_y), title, font=title_font, fill=primary_color)
+        
+        # Center message
+        message_width, message_height = _text_size(message_font, message)
+        message_x = (width - message_width) // 2
+        message_y = title_y + title_height + padding
+        draw.text((message_x, message_y), message, font=message_font, fill=primary_color)
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer
+    
+    # Render successful daily forecast
+    inner_left = padding * 2
+    current_y = padding
+    
+    # Title
+    title_font_size = max(int(height * 0.18), 48)
+    title_font = _load_font(title_font_size)
+    title = payload.get("title", "Today's Forecast")
+    draw.text((inner_left, current_y), title, font=title_font, fill=primary_color)
+    current_y += title_font_size + max(int(height * 0.05), 20)
+    
+    # Weather icon and info row
+    remaining_height = height - current_y - padding
+    primary_font_size = max(int(remaining_height * 0.4), 36)
+    main_font = _load_font(primary_font_size)
+    icon_size = max(int(remaining_height * 0.7), 64)
+    spacing = max(int(primary_font_size * 0.5), 30)
+    small_spacing = max(int(primary_font_size * 0.3), 20)
+    
+    # Load and place icon
+    icon_name = payload.get("icon_name", "unknown.png")
+    condition_icon = _load_icon(icon_name, icon_size)
+    icon_y = current_y + max((remaining_height - icon_size) // 2, 0)
+    image.paste(condition_icon, (inner_left, icon_y), condition_icon)
+    
+    cursor_x = inner_left + icon_size + spacing
+    
+    # Temperature range
+    temp_range = payload.get("temp_range", "--")
+    draw.text((cursor_x, current_y), temp_range, font=main_font, fill=primary_color)
+    temp_width, _ = _text_size(main_font, temp_range)
+    cursor_x += temp_width + spacing
+    
+    # Conditions
+    conditions = payload.get("conditions", "Unknown")
+    draw.text((cursor_x, current_y), conditions, font=main_font, fill=primary_color)
+    conditions_width, _ = _text_size(main_font, conditions)
+    cursor_x += conditions_width + spacing
+    
+    # Precipitation probability
+    precip_prob = payload.get("precip_prob", "--")
+    precip_text = f"Rain: {precip_prob}"
+    draw.text((cursor_x, current_y), precip_text, font=main_font, fill=primary_color)
+    
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
+
+
+def render_5day_forecast_overlay(
+    payload: Dict, width: int, height: int, theme: str
+) -> io.BytesIO:
+    """
+    Render 5-day forecast overlay image matching the style of current conditions overlay.
+    
+    Args:
+        payload: 5-day forecast data from build_5day_forecast_payload
+        width: Image width in pixels
+        height: Image height in pixels
+        theme: 'dark' or 'light'
+    
+    Returns:
+        BytesIO buffer containing PNG image
+    """
+    theme = theme.lower()
+    style = THEME_STYLES.get(theme, THEME_STYLES["dark"])
+    
+    # Create transparent image
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    
+    padding = max(int(height * 0.06), 24)
+    primary_color = style["text"]
+    
+    if payload.get("error"):
+        # Render error message
+        title_font_size = max(int(height * 0.25), 48)
+        title_font = _load_font(title_font_size)
+        message_font_size = max(int(height * 0.15), 32)
+        message_font = _load_font(message_font_size)
+        
+        title = payload.get("title", "Forecast Error")
+        message = payload.get("message", "Unable to load forecast")
+        
+        # Center title
+        title_width, title_height = _text_size(title_font, title)
+        title_x = (width - title_width) // 2
+        title_y = padding
+        draw.text((title_x, title_y), title, font=title_font, fill=primary_color)
+        
+        # Center message
+        message_width, message_height = _text_size(message_font, message)
+        message_x = (width - message_width) // 2
+        message_y = title_y + title_height + padding
+        draw.text((message_x, message_y), message, font=message_font, fill=primary_color)
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer
+    
+    # Render successful 5-day forecast
+    inner_left = padding * 2
+    current_y = padding
+    
+    # Title
+    title_font_size = max(int(height * 0.15), 36)
+    title_font = _load_font(title_font_size)
+    title = payload.get("title", "5-Day Forecast")
+    draw.text((inner_left, current_y), title, font=title_font, fill=primary_color)
+    current_y += title_font_size + max(int(height * 0.04), 16)
+    
+    # Calculate layout for 5 days
+    days = payload.get("days", [])
+    if not days:
+        days = []
+    
+    remaining_height = height - current_y - padding
+    available_width = width - inner_left - padding
+    
+    # Each day gets equal width
+    num_days = len(days)
+    if num_days == 0:
+        num_days = 5
+    
+    day_width = available_width // num_days
+    day_spacing = max(int(day_width * 0.05), 10)
+    content_width = day_width - day_spacing
+    
+    # Font sizes
+    day_name_font_size = max(int(remaining_height * 0.15), 20)
+    day_name_font = _load_font(day_name_font_size)
+    temp_font_size = max(int(remaining_height * 0.13), 18)
+    temp_font = _load_font(temp_font_size)
+    icon_size = max(int(remaining_height * 0.4), 48)
+    
+    # Render each day
+    for i, day in enumerate(days):
+        day_x = inner_left + (i * day_width)
+        day_center_x = day_x + content_width // 2
+        
+        # Day name (centered)
+        day_name = day.get("day_name", f"Day {i+1}")
+        day_name_width, _ = _text_size(day_name_font, day_name)
+        name_x = day_center_x - day_name_width // 2
+        draw.text((name_x, current_y), day_name, font=day_name_font, fill=primary_color)
+        
+        icon_y = current_y + day_name_font_size + max(int(height * 0.03), 12)
+        
+        # Weather icon (centered)
+        icon_name = day.get("icon_name", "unknown.png")
+        icon = _load_icon(icon_name, icon_size)
+        icon_x = day_center_x - icon_size // 2
+        image.paste(icon, (icon_x, icon_y), icon)
+        
+        # Temperature (centered)
+        temp_y = icon_y + icon_size + max(int(height * 0.02), 8)
+        temp_text = day.get("temp_text", "--")
+        temp_width, _ = _text_size(temp_font, temp_text)
+        temp_x = day_center_x - temp_width // 2
+        draw.text((temp_x, temp_y), temp_text, font=temp_font, fill=primary_color)
+    
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
+

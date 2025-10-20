@@ -37,6 +37,8 @@ This uses `docker-compose.yml` to build the image, run it with host networking, 
 
 ## API
 
+### Current Conditions Overlay (Original)
+
 ```
 GET /overlay.png
 ```
@@ -68,6 +70,51 @@ Example:
 http://localhost:8080/overlay.png?width=960&height=220&theme=light&units=metric
 http://localhost:8080/overlay.png?arg1=Monmouth+Beach&arg2=Shrewsbury+River&tideStation=8531942
 ```
+
+---
+
+### Forecast Overlays (New)
+
+Two additional endpoints provide forecast data using the Tempest public API:
+
+```
+GET /overlay/daily   — Today's forecast (high/low, conditions, precipitation)
+GET /overlay/5day    — 5-day forecast with icons and temperatures
+```
+
+**Common query parameters**
+| Parameter | Default | Description                                    |
+|-----------|---------|------------------------------------------------|
+| `width`   | 800     | Output width in pixels (320–1920)              |
+| `height`  | 200     | Output height in pixels (120–600)              |
+| `theme`   | dark    | `dark` or `light` background                   |
+| `units`   | imperial| Display units (`imperial` or `metric`)         |
+
+**Additional environment variables (required for forecasts)**
+- `TEMPEST_API_KEY` — Your Tempest API token (get from https://tempestwx.com/settings/tokens)
+- `TEMPEST_STATION_ID` — Your Tempest station ID
+
+**Response**
+- `Content-Type: image/png`
+- Transparent PNG with forecast data matching the style of the current conditions overlay
+
+**Examples:**
+```
+http://localhost:8080/overlay/daily?width=800&height=200&theme=dark&units=imperial
+http://localhost:8080/overlay/5day?width=1200&height=300&theme=dark&units=imperial
+```
+
+**Key differences from `/overlay.png`:**
+- Forecast endpoints require internet access and Tempest API credentials
+- Forecast data comes from Tempest's cloud API (not local UDP broadcasts)
+- Works anywhere (doesn't require local Tempest station)
+- Recommended size for 5-day: 1200x300 (wider for all 5 days)
+
+**Documentation:**
+- Quick start: See `QUICKSTART.md`
+- Full implementation details: See `FORECAST_OVERLAY_IMPLEMENTATION.md`
+- Testing guide: See `FORECAST_OVERLAY_TESTING.md`
+- Architecture: See `ARCHITECTURE.md`
 
 ## Integration with Vistter Stream
 - `stream_with_overlay.py` (root, `integration/`, and `vistter/`) defaults to `http://tempest-overlay:8080/overlay.png`.
