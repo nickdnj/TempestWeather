@@ -3,14 +3,11 @@ import os
 from flask import Flask, Response, request, send_file
 
 from tempest_listener import get_latest_observation
-from tempest_overlay_image import build_display_payload, render_overlay_image
 from overlay_forecast import (
-    build_daily_forecast_payload,
     build_5day_forecast_payload,
     build_5hour_forecast_payload,
     build_current_conditions_payload,
     build_tides_payload,
-    render_daily_forecast_overlay,
     render_5day_forecast_overlay,
     render_5hour_forecast_overlay,
     render_current_conditions_overlay,
@@ -40,9 +37,7 @@ def index() -> Response:
     return Response(
         "Tempest Weather Overlay service.\n"
         "Available endpoints:\n"
-        "  /overlay.png - Current conditions overlay (original with headers and tide)\n"
-        "  /overlay/current - Current conditions overlay (simple format)\n"
-        "  /overlay/daily - Daily forecast overlay\n"
+        "  /overlay/current - Current conditions overlay\n"
         "  /overlay/5hour - 5-hour forecast overlay\n"
         "  /overlay/5day - 5-day forecast overlay\n"
         "  /overlay/tides - Multi-station tide forecast (up to 4 stations)\n"
@@ -50,59 +45,6 @@ def index() -> Response:
         "  /overlay/tides accepts: station (repeatable, e.g., ?station=8531942&station=8534720)",
         mimetype="text/plain",
     )
-
-
-@app.route("/overlay.png")
-def overlay_png():
-    width = _parse_int(
-        request.args.get("width"), DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH
-    )
-    height = _parse_int(
-        request.args.get("height"), DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT
-    )
-    theme = request.args.get("theme", "dark")
-    units = request.args.get("units", "imperial")
-    header_line_one = request.args.get("arg1", "").strip()
-    header_line_two = request.args.get("arg2", "").strip()
-    tide_station = request.args.get("tideStation") or request.args.get("tide_station")
-
-    observation = get_latest_observation()
-    payload = build_display_payload(
-        observation,
-        units,
-        header_line_one,
-        header_line_two,
-        tide_station,
-    )
-    image_stream = render_overlay_image(payload, width, height, theme)
-
-    response = send_file(image_stream, mimetype="image/png")
-    response.headers["Cache-Control"] = "no-store, max-age=0"
-    return response
-
-
-@app.route("/overlay/daily")
-def overlay_daily():
-    """
-    Daily forecast overlay endpoint.
-    Displays today's forecast with high/low temps, conditions, and precipitation probability.
-    Supports same query parameters as /overlay.png: width, height, theme, units.
-    """
-    width = _parse_int(
-        request.args.get("width"), DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH
-    )
-    height = _parse_int(
-        request.args.get("height"), DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT
-    )
-    theme = request.args.get("theme", "dark")
-    units = request.args.get("units", "imperial")
-    
-    payload = build_daily_forecast_payload(units)
-    image_stream = render_daily_forecast_overlay(payload, width, height, theme)
-    
-    response = send_file(image_stream, mimetype="image/png")
-    response.headers["Cache-Control"] = "no-store, max-age=0"
-    return response
 
 
 @app.route("/overlay/5hour")
