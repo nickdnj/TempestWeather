@@ -827,3 +827,193 @@ def render_5hour_forecast_overlay(
     buffer.seek(0)
     return buffer
 
+
+def build_current_conditions_payload(observation, units: str = "imperial") -> Dict:
+    """
+    Build payload for current conditions overlay using local Tempest data.
+    
+    Args:
+        observation: TempestObservation from local UDP listener
+        units: 'imperial' or 'metric'
+    
+    Returns:
+        Dictionary with current conditions data formatted for rendering
+    """
+    from tempest_overlay_image import (
+        _c_to_f,
+        _ms_to_mph,
+        _ms_to_kmh,
+        _degrees_to_compass,
+        _select_icon_name,
+    )
+    
+    # Get location and station info for credit line
+    location_name = ""  # Will be set by endpoint if provided
+    station_id = TEMPEST_STATION_ID
+    
+    if observation is None:
+        return {
+            "error": False,
+            "title": "Current Conditions",
+            "temperature": "--",
+            "wind": "--",
+            "humidity": "--",
+            "icon_name": "unknown.png",
+            "location_name": location_name,
+            "station_id": station_id,
+            "cache_key": ("waiting", units),
+        }
+    
+    # Format temperature
+    if observation.temperature_c is not None:
+        if units == "metric":
+            temperature = f"{round(observation.temperature_c):.0f}°C"
+        else:
+            temperature = f"{round(_c_to_f(observation.temperature_c)):.0f}°F"
+    else:
+        temperature = "--"
+    
+    # Format wind
+    if observation.wind_speed_ms is not None:
+        if units == "metric":
+            wind_speed = f"{_ms_to_kmh(observation.wind_speed_ms):.0f} km/h"
+        else:
+            wind_speed = f"{_ms_to_mph(observation.wind_speed_ms):.0f} mph"
+        wind = f"{wind_speed} {_degrees_to_compass(observation.wind_direction_deg)}"
+    else:
+        wind = "--"
+    
+    # Format humidity
+    humidity = f"{observation.humidity:.0f}%" if observation.humidity is not None else "--"
+    
+    # Select icon
+    icon_name = _select_icon_name(observation)
+    
+    cache_key = (
+        observation.cache_token if observation else None,
+        units,
+    )
+    
+    return {
+        "error": False,
+        "title": "Current Conditions",
+        "temperature": temperature,
+        "wind": wind,
+        "humidity": humidity,
+        "icon_name": icon_name,
+        "location_name": location_name,
+        "station_id": station_id,
+        "cache_key": cache_key,
+    }
+
+
+def render_current_conditions_overlay(
+    payload: Dict, width: int, height: int, theme: str
+) -> io.BytesIO:
+    """
+    Render current conditions overlay in the same style as forecast overlays.
+    
+    Args:
+        payload: Current conditions data from build_current_conditions_payload
+        width: Image width in pixels
+        height: Image height in pixels
+        theme: 'dark' or 'light'
+    
+    Returns:
+        BytesIO buffer containing PNG image
+    """
+    theme = theme.lower()
+    style = THEME_STYLES.get(theme, THEME_STYLES["dark"])
+    
+    # Create transparent image
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    
+    padding = max(int(height * 0.06), 24)
+    primary_color = style["text"]
+    
+    # Title
+    inner_left = padding * 2
+    current_y = padding
+    
+    title_font_size = max(int(height * 0.18), 48)
+    title_font = _load_font(title_font_size)
+    title = payload.get("title", "Current Conditions")
+    draw.text((inner_left, current_y), title, font=title_font, fill=primary_color)
+    current_y += title_font_size + max(int(height * 0.05), 20)
+    
+    # Weather data row
+    remaining_height = height - current_y - padding
+    primary_font_size = max(int(remaining_height * 0.4), 36)
+    main_font = _load_font(primary_font_size)
+    icon_size = max(int(remaining_height * 0.6), 64)
+    spacing = max(int(primary_font_size * 0.5), 30)
+    small_spacing = max(int(primary_font_size * 0.3), 20)
+    
+    # Load and place weather icon
+    icon_name = payload.get("icon_name", "unknown.png")
+    condition_icon = _load_icon(icon_name, icon_size)
+    icon_y = current_y + max((remaining_height - icon_size) // 3, 0)
+    image.paste(condition_icon, (inner_left, icon_y), condition_icon)
+    
+    cursor_x = inner_left + icon_size + spacing
+    
+    # Temperature
+    temperature = payload.get("temperature", "--")
+    draw.text((cursor_x, current_y), temperature, font=main_font, fill=primary_color)
+    temp_width, _ = _text_size(main_font, temperature)
+    cursor_x += temp_width + spacing
+    
+    # Wind icon and text
+    wind_icon = _load_icon("wind.png", int(icon_size * 0.5))
+    wind_icon_y = current_y + max((primary_font_size - wind_icon.size[1]) // 2, 0)
+    image.paste(wind_icon, (int(cursor_x), int(wind_icon_y)), wind_icon)
+    cursor_x += wind_icon.size[0] + small_spacing
+    
+    wind = payload.get("wind", "--")
+    draw.text((cursor_x, current_y), wind, font=main_font, fill=primary_color)
+    wind_width, _ = _text_size(main_font, wind)
+    cursor_x += wind_width + spacing
+    
+    # Humidity icon and text
+    humidity_icon = _load_icon("humidity.png", int(icon_size * 0.5))
+    humidity_icon_y = current_y + max((primary_font_size - humidity_icon.size[1]) // 2, 0)
+    image.paste(humidity_icon, (int(cursor_x), int(humidity_icon_y)), humidity_icon)
+    cursor_x += humidity_icon.size[0] + small_spacing
+    
+    humidity = payload.get("humidity", "--")
+    draw.text((cursor_x, current_y), humidity, font=main_font, fill=primary_color)
+    
+    # Add credit line at the bottom with location, station ID, and timestamp
+    location = payload.get("location_name", "")
+    station_id = payload.get("station_id", "")
+    
+    # Get current time in local timezone
+    current_time = datetime.now().strftime("%I:%M %p").lstrip("0")
+    
+    # Build credit text with location, station info, and timestamp
+    if location and station_id:
+        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network | {current_time}"
+    elif station_id:
+        credit_text = f"Station {station_id} | Tempest Weather Network | {current_time}"
+    else:
+        credit_text = f"Data from Tempest Weather Network | {current_time}"
+    
+    # Make credit line bright, bold, and highly visible
+    credit_font_size = max(int(height * 0.08), 16)
+    credit_font = _load_font(credit_font_size)
+    credit_color = (255, 255, 255, 255)
+    
+    # Center the credit text at the bottom with margin
+    credit_width, credit_height = _text_size(credit_font, credit_text)
+    credit_x = (width - credit_width) // 2
+    credit_y = height - credit_height - max(int(height * 0.03), 10)
+    
+    # Draw text multiple times with slight offsets to simulate bold effect
+    for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:
+        draw.text((credit_x + offset[0], credit_y + offset[1]), credit_text, font=credit_font, fill=credit_color)
+    
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer

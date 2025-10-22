@@ -8,9 +8,11 @@ from overlay_forecast import (
     build_daily_forecast_payload,
     build_5day_forecast_payload,
     build_5hour_forecast_payload,
+    build_current_conditions_payload,
     render_daily_forecast_overlay,
     render_5day_forecast_overlay,
     render_5hour_forecast_overlay,
+    render_current_conditions_overlay,
 )
 
 app = Flask(__name__)
@@ -36,7 +38,8 @@ def index() -> Response:
     return Response(
         "Tempest Weather Overlay service.\n"
         "Available endpoints:\n"
-        "  /overlay.png - Current conditions overlay\n"
+        "  /overlay.png - Current conditions overlay (original with headers and tide)\n"
+        "  /overlay/current - Current conditions overlay (simple format)\n"
         "  /overlay/daily - Daily forecast overlay\n"
         "  /overlay/5hour - 5-hour forecast overlay\n"
         "  /overlay/5day - 5-day forecast overlay\n"
@@ -140,6 +143,39 @@ def overlay_5day():
     
     payload = build_5day_forecast_payload(units)
     image_stream = render_5day_forecast_overlay(payload, width, height, theme)
+    
+    response = send_file(image_stream, mimetype="image/png")
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+@app.route("/overlay/current")
+def overlay_current():
+    """
+    Current conditions overlay endpoint.
+    Displays current conditions from local Tempest station in the same format as forecast overlays.
+    Uses local UDP data (not public API).
+    Supports same query parameters: width, height, theme, units.
+    """
+    width = _parse_int(
+        request.args.get("width"), DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH
+    )
+    height = _parse_int(
+        request.args.get("height"), DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT
+    )
+    theme = request.args.get("theme", "dark")
+    units = request.args.get("units", "imperial")
+    
+    # Get local Tempest observation
+    observation = get_latest_observation()
+    payload = build_current_conditions_payload(observation, units)
+    
+    # Set location from query parameter if provided
+    location = request.args.get("location", "").strip()
+    if location:
+        payload["location_name"] = location
+    
+    image_stream = render_current_conditions_overlay(payload, width, height, theme)
     
     response = send_file(image_stream, mimetype="image/png")
     response.headers["Cache-Control"] = "no-store, max-age=0"
