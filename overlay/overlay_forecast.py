@@ -201,6 +201,10 @@ def build_5hour_forecast_payload(units: str = "imperial") -> Dict:
             "cache_key": ("error", "5hour", units),
         }
     
+    # Extract location information for credit line
+    location_name = forecast_data.get("location_name", "")
+    station_id = TEMPEST_STATION_ID
+    
     hourly_forecasts = forecast_data.get("forecast", {}).get("hourly", [])
     if len(hourly_forecasts) < 5:
         return {
@@ -264,6 +268,8 @@ def build_5hour_forecast_payload(units: str = "imperial") -> Dict:
         "error": False,
         "title": "5-Hour Forecast",
         "hours": hours,
+        "location_name": location_name,
+        "station_id": station_id,
         "cache_key": cache_key,
     }
 
@@ -710,8 +716,18 @@ def render_5hour_forecast_overlay(
         wind_x = hour_center_x - wind_width // 2
         draw.text((wind_x, wind_y), wind_text, font=wind_font, fill=primary_color)
     
-    # Add credit line at the bottom
-    credit_text = "Data from Tempest Weather Station & Network"
+    # Add credit line at the bottom with location and station ID
+    location = payload.get("location_name", "")
+    station_id = payload.get("station_id", "")
+    
+    # Build credit text with location and station info
+    if location and station_id:
+        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network"
+    elif station_id:
+        credit_text = f"Station {station_id} | Tempest Weather Network"
+    else:
+        credit_text = "Data from Tempest Weather Network"
+    
     credit_font_size = max(int(height * 0.06), 12)
     credit_font = _load_font(credit_font_size)
     
