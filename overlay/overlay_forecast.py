@@ -33,6 +33,27 @@ from tempest_overlay_image import (
 TEMPEST_API_BASE = "https://swd.weatherflow.com/swd/rest/better_forecast"
 TEMPEST_API_KEY = os.getenv("TEMPEST_API_KEY", "")
 TEMPEST_STATION_ID = os.getenv("TEMPEST_STATION_ID", "")
+TEMPEST_LOCATION_STATE = os.getenv("TEMPEST_LOCATION_STATE", "")  # e.g., "NJ"
+
+
+def _format_location_with_state(location: str) -> str:
+    """
+    Format location name with state abbreviation if configured.
+    
+    Args:
+        location: Base location name (e.g., "Monmouth Beach")
+    
+    Returns:
+        Formatted location (e.g., "Monmouth Beach, NJ")
+    """
+    if not location:
+        return location
+    
+    if TEMPEST_LOCATION_STATE:
+        return f"{location}, {TEMPEST_LOCATION_STATE}"
+    
+    return location
+
 
 # Icon mapping from Tempest API icon names to local icon files
 FORECAST_ICON_MAP = {
@@ -125,7 +146,7 @@ def build_daily_forecast_payload(units: str = "imperial") -> Dict:
         }
     
     # Extract location information for credit line
-    location_name = forecast_data.get("location_name", "")
+    location_name = _format_location_with_state(forecast_data.get("location_name", ""))
     station_id = TEMPEST_STATION_ID
     
     daily_forecasts = forecast_data.get("forecast", {}).get("daily", [])
@@ -208,7 +229,7 @@ def build_5hour_forecast_payload(units: str = "imperial") -> Dict:
         }
     
     # Extract location information for credit line
-    location_name = forecast_data.get("location_name", "")
+    location_name = _format_location_with_state(forecast_data.get("location_name", ""))
     station_id = TEMPEST_STATION_ID
     
     hourly_forecasts = forecast_data.get("forecast", {}).get("hourly", [])
@@ -322,7 +343,7 @@ def build_5day_forecast_payload(units: str = "imperial") -> Dict:
         }
     
     # Extract location information for credit line
-    location_name = forecast_data.get("location_name", "")
+    location_name = _format_location_with_state(forecast_data.get("location_name", ""))
     station_id = TEMPEST_STATION_ID
     
     daily_forecasts = forecast_data.get("forecast", {}).get("daily", [])
@@ -856,13 +877,13 @@ def build_current_conditions_payload(observation, units: str = "imperial") -> Di
             "wind": "--",
             "humidity": "--",
             "icon_name": "unknown.png",
-            "location_name": forecast_data.get("location_name", "") if forecast_data else "",
+            "location_name": _format_location_with_state(forecast_data.get("location_name", "")) if forecast_data else "",
             "station_id": station_id,
             "cache_key": ("waiting", units),
         }
     
     # Extract location from API
-    location_name = forecast_data.get("location_name", "")
+    location_name = _format_location_with_state(forecast_data.get("location_name", ""))
     
     # Get current conditions from API
     current = forecast_data.get("current_conditions", {})

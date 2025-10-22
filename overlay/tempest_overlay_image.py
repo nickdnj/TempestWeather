@@ -18,6 +18,29 @@ from tide_client import get_next_tide_event
 FONT_PATH = os.path.join(os.path.dirname(__file__), "../fonts/Arial.ttf")
 ICONS_DIR = os.path.join(os.path.dirname(__file__), "../weather_icons")
 
+# Optional state abbreviation for location display (e.g., "NJ")
+TEMPEST_LOCATION_STATE = os.getenv("TEMPEST_LOCATION_STATE", "")
+
+
+def _format_location_with_state(location: str) -> str:
+    """
+    Format location name with state abbreviation if configured.
+    
+    Args:
+        location: Base location name (e.g., "Monmouth Beach")
+    
+    Returns:
+        Formatted location (e.g., "Monmouth Beach, NJ")
+    """
+    if not location:
+        return location
+    
+    if TEMPEST_LOCATION_STATE:
+        return f"{location}, {TEMPEST_LOCATION_STATE}"
+    
+    return location
+
+
 # Icon names for precipitation codes; fallback handled separately.
 PRECIP_ICON_MAP = {
     1: "rain.png",
@@ -103,7 +126,7 @@ def build_display_payload(
     units = "metric" if units.lower() == "metric" else "imperial"
     
     # Get location and station info for credit line
-    location_name = header_line_one  # Use first header line as location
+    location_name = _format_location_with_state(header_line_one)  # Use first header line as location
     station_id = os.getenv("TEMPEST_STATION_ID", "")
 
     icon_name = _select_icon_name(observation)
