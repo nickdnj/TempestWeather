@@ -470,8 +470,14 @@ def render_daily_forecast_overlay(
     draw.text((inner_left, current_y), title, font=title_font, fill=primary_color)
     current_y += title_font_size + max(int(height * 0.05), 20)
     
+    # Calculate space needed at bottom for credit line with breathing room
+    credit_font_size = max(int(height * 0.08), 16)
+    credit_bottom_margin = max(int(height * 0.03), 10)
+    credit_top_spacing = max(int(height * 0.08), 30)  # Breathing room above credit
+    bottom_reserved = credit_font_size + credit_top_spacing + credit_bottom_margin + padding
+    
     # Weather icon and info row
-    remaining_height = height - current_y - padding
+    remaining_height = height - current_y - bottom_reserved
     primary_font_size = max(int(remaining_height * 0.4), 36)
     main_font = _load_font(primary_font_size)
     icon_size = max(int(remaining_height * 0.7), 64)
@@ -608,7 +614,13 @@ def render_5day_forecast_overlay(
     if not days:
         days = []
     
-    remaining_height = height - current_y - padding
+    # Calculate space needed at bottom for credit line with breathing room
+    credit_font_size = max(int(height * 0.08), 16)
+    credit_bottom_margin = max(int(height * 0.03), 10)
+    credit_top_spacing = max(int(height * 0.08), 30)  # Breathing room above credit
+    bottom_reserved = credit_font_size + credit_top_spacing + credit_bottom_margin + padding
+    
+    remaining_height = height - current_y - bottom_reserved
     available_width = width - inner_left - padding
     
     # Each day gets equal width
@@ -758,7 +770,13 @@ def render_5hour_forecast_overlay(
     if not hours:
         hours = []
     
-    remaining_height = height - current_y - padding
+    # Calculate space needed at bottom for credit line with breathing room
+    credit_font_size = max(int(height * 0.08), 16)
+    credit_bottom_margin = max(int(height * 0.03), 10)
+    credit_top_spacing = max(int(height * 0.08), 30)  # Breathing room above credit
+    bottom_reserved = credit_font_size + credit_top_spacing + credit_bottom_margin + padding
+    
+    remaining_height = height - current_y - bottom_reserved
     available_width = width - inner_left - padding
     
     # Each hour gets equal width
