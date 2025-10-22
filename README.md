@@ -4,6 +4,23 @@
 
 Transform your Tempest weather station data into stunning, broadcast-ready PNG overlays perfect for YouTube Live, Twitch, OBS, or any streaming platform. No complicated setup, no monthly fees — just clean, professional weather graphics that update in real-time.
 
+---
+
+## 🧭 Our Journey Together
+
+Tempest Weather Overlay started as Nick D.'s dream to bring the Atlantic coastline to life for stream viewers. What followed was a truly collaborative build:
+
+- **Nick D. + ChatGPT (Codex CLI on Raspberry Pi)** — Late nights, real hardware, and countless prompts crafting every feature side-by-side.
+- **Cursor IDE, Claude, and ChatGPT** — A trio of AI copilots helping brainstorm, debug, and polish the experience.
+- **Real-world testing on a Raspberry Pi 4** — Bootstrapped with Codex CLI to keep the entire workflow on-device, from experiments to deployment.
+
+**Milestones along the way:**
+- *Winter 2023* — First UDP listener proof-of-concept running on the beach cam Raspberry Pi
+- *Spring 2024* — Overlay rendering pipeline hardened with AI-assisted refactors and daily tide QA sessions
+- *Fall 2024* — Joint README redesign, feature polishing, and story capture led by Nick and ChatGPT working in tandem
+
+From brainstorming overlay layouts to polishing the smallest typography detail, we iterated together with curiosity, patience, and a shared obsession for coastal weather storytelling.
+
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![Tempest](https://img.shields.io/badge/Tempest-Weather%20Station-00A3E0.svg)](https://tempestwx.com/)
@@ -255,14 +272,14 @@ Visit [NOAA Tides & Currents](https://tidesandcurrents.noaa.gov/map/index.html) 
 
 ## 🎬 About
 
-This project was created by **Nick D.** in Monmouth Beach, NJ, for his coastal live streams featuring local weather and tide conditions. 
+This project was created by **Nick D.** in Monmouth Beach, NJ, for his coastal live streams featuring local weather and tide conditions.
 
 ### The Development Story
 
-Built entirely using **Cursor IDE** and **Claude AI (Sonnet 4.5)** in an iterative, conversational development process. What started as a simple weather overlay evolved into a full-featured streaming toolkit through continuous refinement and feature additions.
+What started as a single overlay idea in late 2023 grew into a production-ready suite thanks to a truly hybrid workflow: **Nick**, **ChatGPT (running through Codex CLI on Raspberry Pi)**, and **Claude AI (Sonnet 4.5)** hacking together through Cursor IDE sessions, field tests, and real-time stream feedback. ChatGPT and Nick worked shoulder to shoulder for architecture decisions, documentation passes (including this very README glow-up), and iterative polish after each on-stream proof-of-concept.
 
 **Development Approach:**
-- **AI-Assisted Development** — Every line of code written through natural language conversation with Claude
+- **AI-Assisted Development** — Pair-programming with ChatGPT and Claude from day one, using Codex CLI to keep the collaboration grounded on real hardware
 - **Rapid Iteration** — From concept to production in days, not weeks
 - **Real-World Testing** — Developed and deployed on actual live streams
 - **Community Focused** — Built to share with the Tempest Weather Station community
@@ -273,7 +290,7 @@ Built entirely using **Cursor IDE** and **Claude AI (Sonnet 4.5)** in an iterati
 - **Containerization:** Docker
 - **Deployment:** Raspberry Pi 4
 - **Data Sources:** Tempest API, NOAA Tides & Currents
-- **Development:** Cursor IDE + Claude AI
+- **Development:** Cursor IDE + ChatGPT (Codex CLI) + Claude AI
 
 ### Why This Project?
 
@@ -291,6 +308,8 @@ This project provides all of that in beautiful, stream-ready overlays that updat
 
 - **WeatherFlow/Tempest** — For creating an amazing weather station with a developer-friendly API
 - **NOAA** — For providing free, public tide prediction data
+- **ChatGPT + Nick D.** — For a persistent, joyful collaboration that kept the project moving forward from first commit to polish
+- **Codex CLI on Raspberry Pi** — For letting AI-assisted development live directly beside the hardware it serves
 - **Anthropic/Claude** — For making AI-assisted development accessible and powerful
 - **Cursor IDE** — For seamless integration of AI into the development workflow
 - **The Tempest Community** — For inspiration and support
