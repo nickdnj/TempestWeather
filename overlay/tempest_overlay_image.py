@@ -245,10 +245,22 @@ def render_overlay_image(
         current_y += row_gap
 
     weather_top = current_y
-    remaining_height = max(height - weather_top - padding, int(height * 0.35))
-    timestamp_font_size = max(int(remaining_height * 0.2), 24)
+    
+    # Calculate space needed at bottom for credit line, timestamp, and spacing
+    credit_font_size = max(int(height * 0.08), 16)
+    credit_bottom_margin = max(int(height * 0.03), 10)
+    timestamp_credit_gap = max(int(height * 0.04), 16)
+    
+    # Reserve space at bottom for: credit + margin + gap + timestamp + spacing
+    timestamp_font_size = max(int(height * 0.12), 24)  # Timestamp size
     timestamp_spacing = max(int(timestamp_font_size * 0.7), 20)
-    weather_row_height = max(remaining_height - timestamp_font_size - timestamp_spacing, int(height * 0.32))
+    
+    # Calculate total bottom reservation
+    bottom_reserved = credit_font_size + credit_bottom_margin + timestamp_credit_gap + timestamp_font_size + timestamp_spacing
+    
+    # Available height for weather section
+    remaining_height = max(height - weather_top - bottom_reserved - padding, int(height * 0.35))
+    weather_row_height = max(remaining_height - timestamp_spacing, int(height * 0.32))
 
     temp_text = payload["temperature"]
     wind_text = payload["wind"]
@@ -403,7 +415,7 @@ def render_overlay_image(
         tide_bottom = weather_top + tide_block_height
         weather_row_bottom = max(weather_row_bottom, tide_bottom)
 
-    # Calculate credit line first (it goes at the very bottom)
+    # Render credit line at the bottom (using pre-calculated sizes)
     location = payload.get("location_name", "")
     station_id = payload.get("station_id", "")
     
@@ -415,23 +427,20 @@ def render_overlay_image(
     else:
         credit_text = "Data from Tempest Weather Network"
     
-    # Make credit line bright, bold, and highly visible
-    credit_font_size = max(int(height * 0.08), 16)
+    # Use pre-calculated credit_font_size and margin (calculated earlier for layout)
     credit_font = _load_font(credit_font_size)
     credit_color = (255, 255, 255, 255)
     
     # Position credit at the bottom with margin
     credit_width, credit_height = _text_size(credit_font, credit_text)
     credit_x = (width - credit_width) // 2
-    credit_bottom_margin = max(int(height * 0.03), 10)
     credit_y = height - credit_height - credit_bottom_margin
     
-    # Calculate timestamp position ABOVE the credit line with spacing
+    # Calculate timestamp position ABOVE the credit line (using pre-calculated spacing)
     timestamp_font = _load_font(timestamp_font_size)
     updated_line = f"Updated: {payload['updated']}"
-    timestamp_credit_gap = max(int(height * 0.04), 16)  # Space between timestamp and credit
     
-    # Position timestamp above credit line
+    # Position timestamp above credit line with proper gap
     max_timestamp_y = credit_y - timestamp_credit_gap - timestamp_font_size
     timestamp_y = min(weather_row_bottom + timestamp_spacing, max_timestamp_y)
     
