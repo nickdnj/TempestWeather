@@ -1089,16 +1089,16 @@ def _fetch_station_name(station_id: str) -> str:
         Station name or station ID as fallback
     """
     try:
-        url = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json"
-        params = {"id": station_id}
-        response = requests.get(url, params=params, timeout=5)
+        # Use station ID in URL path, not as query parameter
+        url = f"https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/{station_id}.json"
+        response = requests.get(url, timeout=5)
         response.raise_for_status()
         data = response.json()
         
         # Extract station name from the response
         stations = data.get("stations", [])
         if stations and len(stations) > 0:
-            return stations[0].get("name", station_id)
+            return stations[0].get("name", f"Station {station_id}")
     except Exception:
         pass
     
