@@ -7,8 +7,10 @@ from tempest_overlay_image import build_display_payload, render_overlay_image
 from overlay_forecast import (
     build_daily_forecast_payload,
     build_5day_forecast_payload,
+    build_5hour_forecast_payload,
     render_daily_forecast_overlay,
     render_5day_forecast_overlay,
+    render_5hour_forecast_overlay,
 )
 
 app = Flask(__name__)
@@ -36,6 +38,7 @@ def index() -> Response:
         "Available endpoints:\n"
         "  /overlay.png - Current conditions overlay\n"
         "  /overlay/daily - Daily forecast overlay\n"
+        "  /overlay/5hour - 5-hour forecast overlay\n"
         "  /overlay/5day - 5-day forecast overlay\n"
         "Query parameters: width, height, theme (dark/light), units (imperial/metric)",
         mimetype="text/plain",
@@ -89,6 +92,30 @@ def overlay_daily():
     
     payload = build_daily_forecast_payload(units)
     image_stream = render_daily_forecast_overlay(payload, width, height, theme)
+    
+    response = send_file(image_stream, mimetype="image/png")
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+@app.route("/overlay/5hour")
+def overlay_5hour():
+    """
+    5-hour forecast overlay endpoint.
+    Displays the next 5 hours of forecast with time, weather icon, temperature, and wind.
+    Supports same query parameters as /overlay.png: width, height, theme, units.
+    """
+    width = _parse_int(
+        request.args.get("width"), DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH
+    )
+    height = _parse_int(
+        request.args.get("height"), DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT
+    )
+    theme = request.args.get("theme", "dark")
+    units = request.args.get("units", "imperial")
+    
+    payload = build_5hour_forecast_payload(units)
+    image_stream = render_5hour_forecast_overlay(payload, width, height, theme)
     
     response = send_file(image_stream, mimetype="image/png")
     response.headers["Cache-Control"] = "no-store, max-age=0"

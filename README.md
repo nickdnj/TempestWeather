@@ -75,10 +75,11 @@ http://localhost:8080/overlay.png?arg1=Monmouth+Beach&arg2=Shrewsbury+River&tide
 
 ### Forecast Overlays (New)
 
-Two additional endpoints provide forecast data using the Tempest public API:
+Three additional endpoints provide forecast data using the Tempest public API:
 
 ```
 GET /overlay/daily   — Today's forecast (high/low, conditions, precipitation)
+GET /overlay/5hour   — 5-hour forecast with time, temp, wind, and icons
 GET /overlay/5day    — 5-day forecast with icons and temperatures
 ```
 
@@ -101,6 +102,7 @@ GET /overlay/5day    — 5-day forecast with icons and temperatures
 **Examples:**
 ```
 http://localhost:8080/overlay/daily?width=800&height=200&theme=dark&units=imperial
+http://localhost:8080/overlay/5hour?width=1200&height=300&theme=dark&units=imperial
 http://localhost:8080/overlay/5day?width=1200&height=300&theme=dark&units=imperial
 ```
 

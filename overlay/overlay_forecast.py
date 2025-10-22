@@ -181,6 +181,113 @@ def build_daily_forecast_payload(units: str = "imperial") -> Dict:
     }
 
 
+def build_5hour_forecast_payload(units: str = "imperial") -> Dict:
+    """
+    Build payload for 5-hour forecast overlay.
+    
+    Args:
+        units: 'imperial' or 'metric'
+    
+    Returns:
+        Dictionary with 5-hour forecast data formatted for rendering
+    """
+    forecast_data = fetch_forecast_data(units)
+    
+    if not forecast_data or "forecast" not in forecast_data:
+        return {
+            "error": True,
+            "title": "5-Hour Forecast",
+            "message": "Unable to fetch forecast data",
+            "cache_key": ("error", "5hour", units),
+        }
+    
+    hourly_forecasts = forecast_data.get("forecast", {}).get("hourly", [])
+    if len(hourly_forecasts) < 5:
+        return {
+            "error": True,
+            "title": "5-Hour Forecast",
+            "message": "Insufficient forecast data",
+            "cache_key": ("insufficient", "5hour", units),
+        }
+    
+    # Build list of 5 hours
+    hours = []
+    unit_symbol = "°F" if units == "imperial" else "°C"
+    wind_unit = "mph" if units == "imperial" else "km/h"
+    
+    for i, hour_data in enumerate(hourly_forecasts[:5]):
+        temp = hour_data.get("air_temperature")
+        wind_speed = hour_data.get("wind_avg")
+        wind_direction = hour_data.get("wind_direction")
+        conditions = hour_data.get("conditions", "Unknown")
+        icon_name = hour_data.get("icon", "unknown")
+        local_time = hour_data.get("local_hour")
+        
+        # Format time
+        if local_time:
+            try:
+                hour_dt = datetime.fromtimestamp(local_time, tz=timezone.utc).astimezone()
+                time_label = hour_dt.strftime("%I %p").lstrip("0")  # "10 AM", "3 PM"
+            except:
+                time_label = f"Hour {i+1}"
+        else:
+            time_label = f"Hour {i+1}"
+        
+        # Format temperature
+        temp_text = f"{int(temp)}{unit_symbol}" if temp is not None else "--"
+        
+        # Format wind with direction
+        if wind_speed is not None and wind_direction is not None:
+            wind_dir = _degrees_to_compass(wind_direction)
+            wind_text = f"{int(wind_speed)} {wind_unit} {wind_dir}"
+        else:
+            wind_text = "--"
+        
+        # Map icon
+        local_icon = FORECAST_ICON_MAP.get(icon_name, "unknown.png")
+        
+        hours.append({
+            "time_label": time_label,
+            "temp_text": temp_text,
+            "wind_text": wind_text,
+            "conditions": conditions,
+            "icon_name": local_icon,
+        })
+    
+    cache_key = (
+        "5hour",
+        tuple((h["time_label"], h["temp_text"], h["wind_text"]) for h in hours),
+        units,
+    )
+    
+    return {
+        "error": False,
+        "title": "5-Hour Forecast",
+        "hours": hours,
+        "cache_key": cache_key,
+    }
+
+
+def _degrees_to_compass(degrees: float) -> str:
+    """
+    Convert wind direction in degrees to compass direction.
+    
+    Args:
+        degrees: Wind direction in degrees (0-360)
+    
+    Returns:
+        Compass direction string (N, NE, E, etc.)
+    """
+    sectors = [
+        "N", "NNE", "NE", "ENE",
+        "E", "ESE", "SE", "SSE",
+        "S", "SSW", "SW", "WSW",
+        "W", "WNW", "NW", "NNW",
+    ]
+    idx = int((degrees + 11.25) / 22.5) % 16
+    return sectors[idx]
+
+
 def build_5day_forecast_payload(units: str = "imperial") -> Dict:
     """
     Build payload for 5-day forecast overlay.
@@ -474,6 +581,134 @@ def render_5day_forecast_overlay(
         temp_width, _ = _text_size(temp_font, temp_text)
         temp_x = day_center_x - temp_width // 2
         draw.text((temp_x, temp_y), temp_text, font=temp_font, fill=primary_color)
+    
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
+
+
+def render_5hour_forecast_overlay(
+    payload: Dict, width: int, height: int, theme: str
+) -> io.BytesIO:
+    """
+    Render 5-hour forecast overlay image matching the style of 5-day forecast overlay.
+    
+    Args:
+        payload: 5-hour forecast data from build_5hour_forecast_payload
+        width: Image width in pixels
+        height: Image height in pixels
+        theme: 'dark' or 'light'
+    
+    Returns:
+        BytesIO buffer containing PNG image
+    """
+    theme = theme.lower()
+    style = THEME_STYLES.get(theme, THEME_STYLES["dark"])
+    
+    # Create transparent image
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    
+    padding = max(int(height * 0.06), 24)
+    primary_color = style["text"]
+    
+    if payload.get("error"):
+        # Render error message
+        title_font_size = max(int(height * 0.25), 48)
+        title_font = _load_font(title_font_size)
+        message_font_size = max(int(height * 0.15), 32)
+        message_font = _load_font(message_font_size)
+        
+        title = payload.get("title", "Forecast Error")
+        message = payload.get("message", "Unable to load forecast")
+        
+        # Center title
+        title_width, title_height = _text_size(title_font, title)
+        title_x = (width - title_width) // 2
+        title_y = padding
+        draw.text((title_x, title_y), title, font=title_font, fill=primary_color)
+        
+        # Center message
+        message_width, message_height = _text_size(message_font, message)
+        message_x = (width - message_width) // 2
+        message_y = title_y + title_height + padding
+        draw.text((message_x, message_y), message, font=message_font, fill=primary_color)
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer
+    
+    # Render successful 5-hour forecast
+    inner_left = padding * 2
+    current_y = padding
+    
+    # Title
+    title_font_size = max(int(height * 0.15), 36)
+    title_font = _load_font(title_font_size)
+    title = payload.get("title", "5-Hour Forecast")
+    draw.text((inner_left, current_y), title, font=title_font, fill=primary_color)
+    current_y += title_font_size + max(int(height * 0.04), 16)
+    
+    # Calculate layout for 5 hours
+    hours = payload.get("hours", [])
+    if not hours:
+        hours = []
+    
+    remaining_height = height - current_y - padding
+    available_width = width - inner_left - padding
+    
+    # Each hour gets equal width
+    num_hours = len(hours)
+    if num_hours == 0:
+        num_hours = 5
+    
+    hour_width = available_width // num_hours
+    hour_spacing = max(int(hour_width * 0.05), 10)
+    content_width = hour_width - hour_spacing
+    
+    # Font sizes (similar to 5-day but adjusted for more data per column)
+    time_font_size = max(int(remaining_height * 0.12), 18)
+    time_font = _load_font(time_font_size)
+    temp_font_size = max(int(remaining_height * 0.11), 16)
+    temp_font = _load_font(temp_font_size)
+    wind_font_size = max(int(remaining_height * 0.09), 14)
+    wind_font = _load_font(wind_font_size)
+    icon_size = max(int(remaining_height * 0.35), 48)
+    
+    # Render each hour
+    for i, hour in enumerate(hours):
+        hour_x = inner_left + (i * hour_width)
+        hour_center_x = hour_x + content_width // 2
+        
+        # Time label (centered)
+        time_label = hour.get("time_label", f"Hour {i+1}")
+        time_width, _ = _text_size(time_font, time_label)
+        time_x = hour_center_x - time_width // 2
+        draw.text((time_x, current_y), time_label, font=time_font, fill=primary_color)
+        
+        icon_y = current_y + time_font_size + max(int(height * 0.03), 12)
+        
+        # Weather icon (centered)
+        icon_name = hour.get("icon_name", "unknown.png")
+        icon = _load_icon(icon_name, icon_size)
+        icon_x = hour_center_x - icon_size // 2
+        image.paste(icon, (icon_x, icon_y), icon)
+        
+        # Temperature (centered)
+        temp_y = icon_y + icon_size + max(int(height * 0.02), 8)
+        temp_text = hour.get("temp_text", "--")
+        temp_width, _ = _text_size(temp_font, temp_text)
+        temp_x = hour_center_x - temp_width // 2
+        draw.text((temp_x, temp_y), temp_text, font=temp_font, fill=primary_color)
+        
+        # Wind speed and direction (centered)
+        wind_y = temp_y + temp_font_size + max(int(height * 0.015), 6)
+        wind_text = hour.get("wind_text", "--")
+        wind_width, _ = _text_size(wind_font, wind_text)
+        wind_x = hour_center_x - wind_width // 2
+        draw.text((wind_x, wind_y), wind_text, font=wind_font, fill=primary_color)
     
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
