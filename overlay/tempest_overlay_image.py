@@ -101,6 +101,10 @@ def build_display_payload(
     tide_station: Optional[str] = None,
 ) -> Dict[str, str]:
     units = "metric" if units.lower() == "metric" else "imperial"
+    
+    # Get location and station info for credit line
+    location_name = header_line_one  # Use first header line as location
+    station_id = os.getenv("TEMPEST_STATION_ID", "")
 
     icon_name = _select_icon_name(observation)
     tide_event = get_next_tide_event(tide_station) if tide_station else None
@@ -137,6 +141,8 @@ def build_display_payload(
             "tide_event": tide_event_text,
             "tide_time": tide_time_text,
             "tide_icon_name": tide_icon_name,
+            "location_name": location_name,
+            "station_id": station_id,
             "cache_key": cache_key,
         }
 
@@ -165,8 +171,10 @@ def build_display_payload(
         else "--"
     )
 
+    # Convert UTC timestamp to local timezone (container runs in station's timezone)
     updated_local = observation.observed_at.astimezone()
-    updated = updated_local.strftime("%Y-%m-%d %H:%M %Z")
+    # Format: "2025-10-22 09:50 AM EDT" (using 12-hour format with AM/PM)
+    updated = updated_local.strftime("%Y-%m-%d %I:%M %p %Z").replace(" 0", " ")
 
     cache_key = (
         observation.cache_token,
@@ -188,6 +196,8 @@ def build_display_payload(
         "tide_event": tide_event_text,
         "tide_time": tide_time_text,
         "tide_icon_name": tide_icon_name,
+        "location_name": location_name,
+        "station_id": station_id,
         "cache_key": cache_key,
     }
 
@@ -399,6 +409,34 @@ def render_overlay_image(
     if timestamp_y + timestamp_font_size > height - padding:
         timestamp_y = height - padding - timestamp_font_size
     draw.text((inner_left, timestamp_y), updated_line, font=timestamp_font, fill=primary_color)
+
+    # Add credit line at the bottom with location and station ID (bright, bold, highly visible)
+    location = payload.get("location_name", "")
+    station_id = payload.get("station_id", "")
+    
+    # Build credit text with location and station info
+    if location and station_id:
+        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network"
+    elif station_id:
+        credit_text = f"Station {station_id} | Tempest Weather Network"
+    else:
+        credit_text = "Data from Tempest Weather Network"
+    
+    # Make credit line bright, bold, and highly visible (same as forecast overlays)
+    credit_font_size = max(int(height * 0.08), 16)  # Larger font
+    credit_font = _load_font(credit_font_size)
+    
+    # Use pure white with full opacity for maximum visibility
+    credit_color = (255, 255, 255, 255)
+    
+    # Center the credit text at the bottom with small margin
+    credit_width, credit_height = _text_size(credit_font, credit_text)
+    credit_x = (width - credit_width) // 2
+    credit_y = height - credit_height - max(int(height * 0.03), 10)
+    
+    # Draw text multiple times with slight offsets to simulate bold effect
+    for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:
+        draw.text((credit_x + offset[0], credit_y + offset[1]), credit_text, font=credit_font, fill=credit_color)
 
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
