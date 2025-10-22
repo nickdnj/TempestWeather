@@ -830,28 +830,25 @@ def render_5hour_forecast_overlay(
 
 def build_current_conditions_payload(observation, units: str = "imperial") -> Dict:
     """
-    Build payload for current conditions overlay using local Tempest data.
+    Build payload for current conditions overlay using Tempest API.
+    Fetches current conditions, icon, and location from API for accuracy.
     
     Args:
-        observation: TempestObservation from local UDP listener
+        observation: TempestObservation from local UDP listener (used as fallback)
         units: 'imperial' or 'metric'
     
     Returns:
         Dictionary with current conditions data formatted for rendering
     """
-    from tempest_overlay_image import (
-        _c_to_f,
-        _ms_to_mph,
-        _ms_to_kmh,
-        _degrees_to_compass,
-        _select_icon_name,
-    )
+    # Fetch data from Tempest API for accurate icon and location
+    forecast_data = fetch_forecast_data(units)
     
-    # Get location and station info for credit line
-    location_name = ""  # Will be set by endpoint if provided
     station_id = TEMPEST_STATION_ID
+    unit_symbol = "°F" if units == "imperial" else "°C"
+    wind_unit = "mph" if units == "imperial" else "km/h"
     
-    if observation is None:
+    if not forecast_data or "current_conditions" not in forecast_data:
+        # Fallback to "waiting" state
         return {
             "error": False,
             "title": "Current Conditions",
@@ -859,38 +856,45 @@ def build_current_conditions_payload(observation, units: str = "imperial") -> Di
             "wind": "--",
             "humidity": "--",
             "icon_name": "unknown.png",
-            "location_name": location_name,
+            "location_name": forecast_data.get("location_name", "") if forecast_data else "",
             "station_id": station_id,
             "cache_key": ("waiting", units),
         }
     
-    # Format temperature
-    if observation.temperature_c is not None:
-        if units == "metric":
-            temperature = f"{round(observation.temperature_c):.0f}°C"
-        else:
-            temperature = f"{round(_c_to_f(observation.temperature_c)):.0f}°F"
-    else:
-        temperature = "--"
+    # Extract location from API
+    location_name = forecast_data.get("location_name", "")
     
-    # Format wind
-    if observation.wind_speed_ms is not None:
-        if units == "metric":
-            wind_speed = f"{_ms_to_kmh(observation.wind_speed_ms):.0f} km/h"
-        else:
-            wind_speed = f"{_ms_to_mph(observation.wind_speed_ms):.0f} mph"
-        wind = f"{wind_speed} {_degrees_to_compass(observation.wind_direction_deg)}"
+    # Get current conditions from API
+    current = forecast_data.get("current_conditions", {})
+    
+    # Temperature
+    temp = current.get("air_temperature")
+    temperature = f"{int(temp)}{unit_symbol}" if temp is not None else "--"
+    
+    # Wind
+    wind_speed = current.get("wind_avg")
+    wind_direction = current.get("wind_direction")
+    if wind_speed is not None:
+        wind_text = f"{int(wind_speed)} {wind_unit}"
+        if wind_direction is not None:
+            wind_text += f" {_degrees_to_compass(wind_direction)}"
+        wind = wind_text
     else:
         wind = "--"
     
-    # Format humidity
-    humidity = f"{observation.humidity:.0f}%" if observation.humidity is not None else "--"
+    # Humidity
+    humidity_val = current.get("relative_humidity")
+    humidity = f"{int(humidity_val)}%" if humidity_val is not None else "--"
     
-    # Select icon
-    icon_name = _select_icon_name(observation)
+    # Icon from API (much more accurate than deriving from sensors!)
+    icon_api_name = current.get("icon", "unknown")
+    icon_name = FORECAST_ICON_MAP.get(icon_api_name, "unknown.png")
     
     cache_key = (
-        observation.cache_token if observation else None,
+        current.get("time"),
+        temp,
+        wind_speed,
+        humidity_val,
         units,
     )
     
@@ -905,6 +909,20 @@ def build_current_conditions_payload(observation, units: str = "imperial") -> Di
         "station_id": station_id,
         "cache_key": cache_key,
     }
+
+
+def _degrees_to_compass(degrees: Optional[float]) -> str:
+    """Convert degrees to compass direction."""
+    if degrees is None:
+        return ""
+    sectors = [
+        "N", "NNE", "NE", "ENE",
+        "E", "ESE", "SE", "SSE",
+        "S", "SSW", "SW", "WSW",
+        "W", "WNW", "NW", "NNW",
+    ]
+    idx = int((degrees + 11.25) / 22.5) % 16
+    return sectors[idx]
 
 
 def render_current_conditions_overlay(

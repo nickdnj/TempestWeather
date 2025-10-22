@@ -153,9 +153,9 @@ def overlay_5day():
 def overlay_current():
     """
     Current conditions overlay endpoint.
-    Displays current conditions from local Tempest station in the same format as forecast overlays.
-    Uses local UDP data (not public API).
-    Supports same query parameters: width, height, theme, units.
+    Displays current conditions using Tempest API for accurate icon and location.
+    Location name and weather icon are automatically fetched from the API.
+    Supports query parameters: width, height, theme, units, location (optional override).
     """
     width = _parse_int(
         request.args.get("width"), DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH
@@ -166,11 +166,11 @@ def overlay_current():
     theme = request.args.get("theme", "dark")
     units = request.args.get("units", "imperial")
     
-    # Get local Tempest observation
-    observation = get_latest_observation()
+    # Build payload from Tempest API (includes location and accurate icon)
+    observation = get_latest_observation()  # Kept for potential fallback
     payload = build_current_conditions_payload(observation, units)
     
-    # Set location from query parameter if provided
+    # Optional location override via query parameter
     location = request.args.get("location", "").strip()
     if location:
         payload["location_name"] = location
