@@ -1,8 +1,0 @@
-
-
-
-from users.models import APIKey
-api_key = APIKey.objects.get(key='7l0cOnQrBPq_DjYrShp_oyt9VkI7PoluiNj0Dcl9aQE')
-print(api_key.user.username)
-
-http://127.0.0.1:8000/api/example/?api_key=7l0cOnQrBPq_DjYrShp_oyt9VkI7PoluiNj0Dcl9aQE
