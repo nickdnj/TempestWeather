@@ -246,21 +246,23 @@ def render_overlay_image(
 
     weather_top = current_y
     
-    # Calculate space needed at bottom for credit line, timestamp, and spacing
+    # Calculate space needed at bottom for credit line only (timestamp now included in credit)
     credit_font_size = max(int(height * 0.08), 16)
     credit_bottom_margin = max(int(height * 0.03), 10)
-    timestamp_credit_gap = max(int(height * 0.04), 16)
     
-    # Reserve space at bottom for: credit + margin + gap + timestamp + spacing
-    timestamp_font_size = max(int(height * 0.12), 24)  # Timestamp size
-    timestamp_spacing = max(int(timestamp_font_size * 0.7), 20)
-    
-    # Calculate total bottom reservation
-    bottom_reserved = credit_font_size + credit_bottom_margin + timestamp_credit_gap + timestamp_font_size + timestamp_spacing
+    # Reserve space at bottom for: credit + margin (MUCH SIMPLER!)
+    bottom_reserved = credit_font_size + credit_bottom_margin + padding
     
     # Available height for weather section
-    remaining_height = max(height - weather_top - bottom_reserved - padding, int(height * 0.35))
-    weather_row_height = max(remaining_height - timestamp_spacing, int(height * 0.32))
+    available_for_weather = height - weather_top - bottom_reserved
+    
+    # Weather row height is the available space
+    weather_row_height = max(available_for_weather, int(height * 0.35))
+    remaining_height = weather_row_height  # For compatibility with existing code
+    
+    # Calculate font sizes for weather section based on available space
+    timestamp_font_size = max(int(weather_row_height * 0.2), 24)
+    timestamp_spacing = max(int(timestamp_font_size * 0.7), 20)
 
     temp_text = payload["temperature"]
     wind_text = payload["wind"]
@@ -415,17 +417,21 @@ def render_overlay_image(
         tide_bottom = weather_top + tide_block_height
         weather_row_bottom = max(weather_row_bottom, tide_bottom)
 
-    # Render credit line at the bottom (using pre-calculated sizes)
+    # Render credit line at the bottom with location, station ID, and timestamp
     location = payload.get("location_name", "")
     station_id = payload.get("station_id", "")
     
-    # Build credit text with location and station info
+    # Get current time in local timezone (from payload's updated timestamp)
+    from datetime import datetime
+    current_time = datetime.now().strftime("%I:%M %p").lstrip("0")  # "10:38 AM"
+    
+    # Build credit text with location, station info, and timestamp
     if location and station_id:
-        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network"
+        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network | {current_time}"
     elif station_id:
-        credit_text = f"Station {station_id} | Tempest Weather Network"
+        credit_text = f"Station {station_id} | Tempest Weather Network | {current_time}"
     else:
-        credit_text = "Data from Tempest Weather Network"
+        credit_text = f"Data from Tempest Weather Network | {current_time}"
     
     # Use pre-calculated credit_font_size and margin (calculated earlier for layout)
     credit_font = _load_font(credit_font_size)
@@ -436,18 +442,7 @@ def render_overlay_image(
     credit_x = (width - credit_width) // 2
     credit_y = height - credit_height - credit_bottom_margin
     
-    # Calculate timestamp position ABOVE the credit line (using pre-calculated spacing)
-    timestamp_font = _load_font(timestamp_font_size)
-    updated_line = f"Updated: {payload['updated']}"
-    
-    # Position timestamp above credit line with proper gap
-    max_timestamp_y = credit_y - timestamp_credit_gap - timestamp_font_size
-    timestamp_y = min(weather_row_bottom + timestamp_spacing, max_timestamp_y)
-    
-    # Draw timestamp
-    draw.text((inner_left, timestamp_y), updated_line, font=timestamp_font, fill=primary_color)
-    
-    # Draw credit line with bold effect
+    # Draw credit line with bold effect (NO SEPARATE TIMESTAMP LINE!)
     for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:
         draw.text((credit_x + offset[0], credit_y + offset[1]), credit_text, font=credit_font, fill=credit_color)
 

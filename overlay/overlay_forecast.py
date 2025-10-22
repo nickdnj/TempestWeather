@@ -482,17 +482,20 @@ def render_daily_forecast_overlay(
     precip_text = f"Rain: {precip_prob}"
     draw.text((cursor_x, current_y), precip_text, font=main_font, fill=primary_color)
     
-    # Add credit line at the bottom with location and station ID
+    # Add credit line at the bottom with location, station ID, and timestamp
     location = payload.get("location_name", "")
     station_id = payload.get("station_id", "")
     
-    # Build credit text with location and station info
+    # Get current time in local timezone
+    current_time = datetime.now().strftime("%I:%M %p").lstrip("0")  # "10:23 AM"
+    
+    # Build credit text with location, station info, and timestamp
     if location and station_id:
-        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network"
+        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network | {current_time}"
     elif station_id:
-        credit_text = f"Station {station_id} | Tempest Weather Network"
+        credit_text = f"Station {station_id} | Tempest Weather Network | {current_time}"
     else:
-        credit_text = "Data from Tempest Weather Network"
+        credit_text = f"Data from Tempest Weather Network | {current_time}"
     
     # Make credit line bright, bold, and highly visible
     credit_font_size = max(int(height * 0.08), 16)  # Larger font
@@ -629,17 +632,20 @@ def render_5day_forecast_overlay(
         temp_x = day_center_x - temp_width // 2
         draw.text((temp_x, temp_y), temp_text, font=temp_font, fill=primary_color)
     
-    # Add credit line at the bottom with location and station ID
+    # Add credit line at the bottom with location, station ID, and timestamp
     location = payload.get("location_name", "")
     station_id = payload.get("station_id", "")
     
-    # Build credit text with location and station info
+    # Get current time in local timezone
+    current_time = datetime.now().strftime("%I:%M %p").lstrip("0")  # "10:23 AM"
+    
+    # Build credit text with location, station info, and timestamp
     if location and station_id:
-        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network"
+        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network | {current_time}"
     elif station_id:
-        credit_text = f"Station {station_id} | Tempest Weather Network"
+        credit_text = f"Station {station_id} | Tempest Weather Network | {current_time}"
     else:
-        credit_text = "Data from Tempest Weather Network"
+        credit_text = f"Data from Tempest Weather Network | {current_time}"
     
     # Make credit line bright, bold, and highly visible
     credit_font_size = max(int(height * 0.08), 16)  # Larger font
@@ -785,17 +791,20 @@ def render_5hour_forecast_overlay(
         wind_x = hour_center_x - wind_width // 2
         draw.text((wind_x, wind_y), wind_text, font=wind_font, fill=primary_color)
     
-    # Add credit line at the bottom with location and station ID
+    # Add credit line at the bottom with location, station ID, and timestamp
     location = payload.get("location_name", "")
     station_id = payload.get("station_id", "")
     
-    # Build credit text with location and station info
+    # Get current time in local timezone
+    current_time = datetime.now().strftime("%I:%M %p").lstrip("0")  # "10:23 AM"
+    
+    # Build credit text with location, station info, and timestamp
     if location and station_id:
-        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network"
+        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network | {current_time}"
     elif station_id:
-        credit_text = f"Station {station_id} | Tempest Weather Network"
+        credit_text = f"Station {station_id} | Tempest Weather Network | {current_time}"
     else:
-        credit_text = "Data from Tempest Weather Network"
+        credit_text = f"Data from Tempest Weather Network | {current_time}"
     
     # Make credit line bright, bold, and highly visible
     credit_font_size = max(int(height * 0.08), 16)  # Larger font
