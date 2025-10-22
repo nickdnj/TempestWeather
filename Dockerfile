@@ -10,6 +10,7 @@ COPY fonts ./fonts
 COPY weather_icons ./weather_icons
 
 ENV PYTHONUNBUFFERED=1
+ENV TZ=America/New_York
 EXPOSE 8080
 
 CMD ["python", "overlay/flask_overlay_server.py"]

@@ -124,6 +124,10 @@ def build_daily_forecast_payload(units: str = "imperial") -> Dict:
             "cache_key": ("error", "daily", units),
         }
     
+    # Extract location information for credit line
+    location_name = forecast_data.get("location_name", "")
+    station_id = TEMPEST_STATION_ID
+    
     daily_forecasts = forecast_data.get("forecast", {}).get("daily", [])
     if not daily_forecasts:
         return {
@@ -177,6 +181,8 @@ def build_daily_forecast_payload(units: str = "imperial") -> Dict:
         "conditions": conditions,
         "precip_prob": f"{precip_prob}%",
         "icon_name": local_icon,
+        "location_name": location_name,
+        "station_id": station_id,
         "cache_key": cache_key,
     }
 
@@ -227,13 +233,13 @@ def build_5hour_forecast_payload(units: str = "imperial") -> Dict:
         icon_name = hour_data.get("icon", "unknown")
         time_timestamp = hour_data.get("time")
         
-        # Format time from Unix timestamp (already in correct timezone from API)
+        # Format time from Unix timestamp (Docker container runs in station's timezone)
         if time_timestamp:
             try:
-                # Use local timezone directly - API provides timestamps in station's timezone
+                # Simple conversion - container TZ matches station TZ
                 hour_dt = datetime.fromtimestamp(time_timestamp)
                 time_label = hour_dt.strftime("%I %p").lstrip("0")  # "10 AM", "3 PM"
-            except:
+            except Exception as e:
                 time_label = f"Hour {i+1}"
         else:
             time_label = f"Hour {i+1}"
@@ -315,6 +321,10 @@ def build_5day_forecast_payload(units: str = "imperial") -> Dict:
             "cache_key": ("error", "5day", units),
         }
     
+    # Extract location information for credit line
+    location_name = forecast_data.get("location_name", "")
+    station_id = TEMPEST_STATION_ID
+    
     daily_forecasts = forecast_data.get("forecast", {}).get("daily", [])
     if len(daily_forecasts) < 5:
         return {
@@ -370,6 +380,8 @@ def build_5day_forecast_payload(units: str = "imperial") -> Dict:
         "error": False,
         "title": "5-Day Forecast",
         "days": days,
+        "location_name": location_name,
+        "station_id": station_id,
         "cache_key": cache_key,
     }
 
@@ -469,6 +481,31 @@ def render_daily_forecast_overlay(
     precip_prob = payload.get("precip_prob", "--")
     precip_text = f"Rain: {precip_prob}"
     draw.text((cursor_x, current_y), precip_text, font=main_font, fill=primary_color)
+    
+    # Add credit line at the bottom with location and station ID
+    location = payload.get("location_name", "")
+    station_id = payload.get("station_id", "")
+    
+    # Build credit text with location and station info
+    if location and station_id:
+        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network"
+    elif station_id:
+        credit_text = f"Station {station_id} | Tempest Weather Network"
+    else:
+        credit_text = "Data from Tempest Weather Network"
+    
+    credit_font_size = max(int(height * 0.06), 12)
+    credit_font = _load_font(credit_font_size)
+    
+    # Use a slightly muted color for the credit (70% opacity)
+    credit_color = tuple(list(primary_color[:3]) + [int(primary_color[3] * 0.7)])
+    
+    # Center the credit text at the bottom with small margin
+    credit_width, credit_height = _text_size(credit_font, credit_text)
+    credit_x = (width - credit_width) // 2
+    credit_y = height - credit_height - max(int(height * 0.03), 10)
+    
+    draw.text((credit_x, credit_y), credit_text, font=credit_font, fill=credit_color)
     
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
@@ -588,6 +625,31 @@ def render_5day_forecast_overlay(
         temp_width, _ = _text_size(temp_font, temp_text)
         temp_x = day_center_x - temp_width // 2
         draw.text((temp_x, temp_y), temp_text, font=temp_font, fill=primary_color)
+    
+    # Add credit line at the bottom with location and station ID
+    location = payload.get("location_name", "")
+    station_id = payload.get("station_id", "")
+    
+    # Build credit text with location and station info
+    if location and station_id:
+        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network"
+    elif station_id:
+        credit_text = f"Station {station_id} | Tempest Weather Network"
+    else:
+        credit_text = "Data from Tempest Weather Network"
+    
+    credit_font_size = max(int(height * 0.06), 12)
+    credit_font = _load_font(credit_font_size)
+    
+    # Use a slightly muted color for the credit (70% opacity)
+    credit_color = tuple(list(primary_color[:3]) + [int(primary_color[3] * 0.7)])
+    
+    # Center the credit text at the bottom with small margin
+    credit_width, credit_height = _text_size(credit_font, credit_text)
+    credit_x = (width - credit_width) // 2
+    credit_y = height - credit_height - max(int(height * 0.03), 10)
+    
+    draw.text((credit_x, credit_y), credit_text, font=credit_font, fill=credit_color)
     
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
