@@ -403,14 +403,7 @@ def render_overlay_image(
         tide_bottom = weather_top + tide_block_height
         weather_row_bottom = max(weather_row_bottom, tide_bottom)
 
-    timestamp_y = weather_row_bottom + timestamp_spacing
-    timestamp_font = _load_font(timestamp_font_size)
-    updated_line = f"Updated: {payload['updated']}"
-    if timestamp_y + timestamp_font_size > height - padding:
-        timestamp_y = height - padding - timestamp_font_size
-    draw.text((inner_left, timestamp_y), updated_line, font=timestamp_font, fill=primary_color)
-
-    # Add credit line at the bottom with location and station ID (bright, bold, highly visible)
+    # Calculate credit line first (it goes at the very bottom)
     location = payload.get("location_name", "")
     station_id = payload.get("station_id", "")
     
@@ -422,19 +415,30 @@ def render_overlay_image(
     else:
         credit_text = "Data from Tempest Weather Network"
     
-    # Make credit line bright, bold, and highly visible (same as forecast overlays)
-    credit_font_size = max(int(height * 0.08), 16)  # Larger font
+    # Make credit line bright, bold, and highly visible
+    credit_font_size = max(int(height * 0.08), 16)
     credit_font = _load_font(credit_font_size)
-    
-    # Use pure white with full opacity for maximum visibility
     credit_color = (255, 255, 255, 255)
     
-    # Center the credit text at the bottom with small margin
+    # Position credit at the bottom with margin
     credit_width, credit_height = _text_size(credit_font, credit_text)
     credit_x = (width - credit_width) // 2
-    credit_y = height - credit_height - max(int(height * 0.03), 10)
+    credit_bottom_margin = max(int(height * 0.03), 10)
+    credit_y = height - credit_height - credit_bottom_margin
     
-    # Draw text multiple times with slight offsets to simulate bold effect
+    # Calculate timestamp position ABOVE the credit line with spacing
+    timestamp_font = _load_font(timestamp_font_size)
+    updated_line = f"Updated: {payload['updated']}"
+    timestamp_credit_gap = max(int(height * 0.04), 16)  # Space between timestamp and credit
+    
+    # Position timestamp above credit line
+    max_timestamp_y = credit_y - timestamp_credit_gap - timestamp_font_size
+    timestamp_y = min(weather_row_bottom + timestamp_spacing, max_timestamp_y)
+    
+    # Draw timestamp
+    draw.text((inner_left, timestamp_y), updated_line, font=timestamp_font, fill=primary_color)
+    
+    # Draw credit line with bold effect
     for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:
         draw.text((credit_x + offset[0], credit_y + offset[1]), credit_text, font=credit_font, fill=credit_color)
 
