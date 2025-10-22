@@ -227,10 +227,11 @@ def build_5hour_forecast_payload(units: str = "imperial") -> Dict:
         icon_name = hour_data.get("icon", "unknown")
         time_timestamp = hour_data.get("time")
         
-        # Format time from Unix timestamp
+        # Format time from Unix timestamp (already in correct timezone from API)
         if time_timestamp:
             try:
-                hour_dt = datetime.fromtimestamp(time_timestamp, tz=timezone.utc).astimezone()
+                # Use local timezone directly - API provides timestamps in station's timezone
+                hour_dt = datetime.fromtimestamp(time_timestamp)
                 time_label = hour_dt.strftime("%I %p").lstrip("0")  # "10 AM", "3 PM"
             except:
                 time_label = f"Hour {i+1}"
