@@ -28,6 +28,7 @@ from tempest_overlay_image import (
     _text_size,
     _load_icon,
 )
+from tide_client import get_next_tide_event, TideEvent
 
 # Tempest API configuration
 TEMPEST_API_BASE = "https://swd.weatherflow.com/swd/rest/better_forecast"
@@ -1065,6 +1066,298 @@ def render_current_conditions_overlay(
     credit_width, credit_height = _text_size(credit_font, credit_text)
     credit_x = (width - credit_width) // 2
     credit_y = height - credit_height - max(int(height * 0.03), 10)
+    
+    # Draw text multiple times with slight offsets to simulate bold effect
+    for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:
+        draw.text((credit_x + offset[0], credit_y + offset[1]), credit_text, font=credit_font, fill=credit_color)
+    
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
+
+
+def _fetch_station_name(station_id: str) -> str:
+    """
+    Fetch station name from NOAA API.
+    Falls back to station ID if fetch fails.
+    
+    Args:
+        station_id: NOAA station ID
+    
+    Returns:
+        Station name or station ID as fallback
+    """
+    try:
+        url = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json"
+        params = {"id": station_id}
+        response = requests.get(url, params=params, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extract station name from the response
+        stations = data.get("stations", [])
+        if stations and len(stations) > 0:
+            return stations[0].get("name", station_id)
+    except Exception:
+        pass
+    
+    # Fallback to station ID
+    return f"Station {station_id}"
+
+
+def build_tides_payload(station_ids: List[str]) -> Dict:
+    """
+    Build payload for multi-station tide overlay.
+    
+    Args:
+        station_ids: List of NOAA tide station IDs (up to 4)
+    
+    Returns:
+        Dictionary with tide data for each station
+    """
+    # Limit to 4 stations
+    station_ids = station_ids[:4]
+    
+    if not station_ids:
+        return {
+            "error": True,
+            "title": "Tide Forecast",
+            "message": "No stations specified",
+            "cache_key": ("error", "tides"),
+        }
+    
+    stations_data = []
+    
+    for station_id in station_ids:
+        station_id = station_id.strip()
+        if not station_id:
+            continue
+        
+        # Fetch station name
+        station_name = _fetch_station_name(station_id)
+        
+        # Fetch next tide event
+        tide_event = get_next_tide_event(station_id)
+        
+        if tide_event:
+            station_data = {
+                "station_id": station_id,
+                "station_name": station_name,
+                "tide_type": tide_event.label,  # "High tide" or "Low tide"
+                "tide_time": tide_event.event_time.strftime("%I:%M %p").lstrip("0"),
+                "icon_name": tide_event.icon_name,  # "high_tide.png" or "low_tide.png"
+            }
+        else:
+            # No tide data available
+            station_data = {
+                "station_id": station_id,
+                "station_name": station_name,
+                "tide_type": "No data",
+                "tide_time": "--",
+                "icon_name": "unknown.png",
+            }
+        
+        stations_data.append(station_data)
+    
+    if not stations_data:
+        return {
+            "error": True,
+            "title": "Tide Forecast",
+            "message": "No valid stations",
+            "cache_key": ("error", "tides"),
+        }
+    
+    cache_key = tuple(
+        (s["station_id"], s["tide_type"], s["tide_time"]) 
+        for s in stations_data
+    )
+    
+    return {
+        "error": False,
+        "title": "Tide Forecast",
+        "stations": stations_data,
+        "cache_key": cache_key,
+    }
+
+
+def render_tides_overlay(
+    payload: Dict, width: int, height: int, theme: str
+) -> io.BytesIO:
+    """
+    Render multi-station tide overlay with 4 columns.
+    
+    Args:
+        payload: Tide data from build_tides_payload
+        width: Image width in pixels
+        height: Image height in pixels
+        theme: 'dark' or 'light'
+    
+    Returns:
+        BytesIO buffer containing PNG image
+    """
+    theme = theme.lower()
+    style = THEME_STYLES.get(theme, THEME_STYLES["dark"])
+    
+    # Create transparent image
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    
+    padding = max(int(height * 0.06), 24)
+    primary_color = style["text"]
+    
+    # Handle error state
+    if payload.get("error"):
+        title_font_size = max(int(height * 0.18), 48)
+        title_font = _load_font(title_font_size)
+        message_font_size = max(int(height * 0.12), 32)
+        message_font = _load_font(message_font_size)
+        
+        title = payload.get("title", "Tide Forecast")
+        message = payload.get("message", "Unable to fetch tide data")
+        
+        title_width, title_height = _text_size(title_font, title)
+        message_width, message_height = _text_size(message_font, message)
+        
+        title_x = (width - title_width) // 2
+        title_y = (height - title_height - message_height - padding) // 2
+        message_x = (width - message_width) // 2
+        message_y = title_y + title_height + padding
+        
+        draw.text((title_x, title_y), title, font=title_font, fill=primary_color)
+        draw.text((message_x, message_y), message, font=message_font, fill=primary_color)
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer
+    
+    # Render successful tide forecast
+    inner_left = padding * 2
+    current_y = padding
+    
+    # Title
+    title_font_size = max(int(height * 0.18), 48)
+    title_font = _load_font(title_font_size)
+    title = payload.get("title", "Tide Forecast")
+    draw.text((inner_left, current_y), title, font=title_font, fill=primary_color)
+    current_y += title_font_size + max(int(height * 0.05), 20)
+    
+    # Calculate space needed at bottom for credit line with breathing room
+    credit_font_size = max(int(height * 0.08), 16)
+    credit_bottom_margin = max(int(height * 0.03), 10)
+    credit_top_spacing = max(int(height * 0.08), 30)  # Breathing room above credit
+    bottom_reserved = credit_font_size + credit_top_spacing + credit_bottom_margin + padding
+    
+    remaining_height = height - current_y - bottom_reserved
+    available_width = width - inner_left - padding
+    
+    # Each station gets equal width
+    stations = payload.get("stations", [])
+    num_stations = len(stations)
+    if num_stations == 0:
+        num_stations = 4
+    
+    station_width = available_width // num_stations
+    station_spacing = max(int(station_width * 0.05), 10)
+    content_width = station_width - station_spacing
+    
+    # Font sizes
+    station_name_font_size = max(int(remaining_height * 0.12), 18)
+    station_name_font = _load_font(station_name_font_size)
+    station_id_font_size = max(int(remaining_height * 0.08), 14)
+    station_id_font = _load_font(station_id_font_size)
+    tide_label_font_size = max(int(remaining_height * 0.10), 16)
+    tide_label_font = _load_font(tide_label_font_size)
+    tide_time_font_size = max(int(remaining_height * 0.11), 16)
+    tide_time_font = _load_font(tide_time_font_size)
+    icon_size = max(int(remaining_height * 0.4), 48)
+    
+    # Render each station
+    for i, station in enumerate(stations):
+        station_x = inner_left + (i * station_width)
+        station_center_x = station_x + content_width // 2
+        
+        content_y = current_y
+        
+        # Station name (centered, may wrap)
+        station_name = station.get("station_name", "Unknown")
+        # Simple word wrapping for long names
+        name_words = station_name.split()
+        name_lines = []
+        current_line = ""
+        for word in name_words:
+            test_line = f"{current_line} {word}".strip()
+            test_width, _ = _text_size(station_name_font, test_line)
+            if test_width <= content_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    name_lines.append(current_line)
+                current_line = word
+        if current_line:
+            name_lines.append(current_line)
+        
+        # Draw name lines
+        for line in name_lines[:2]:  # Max 2 lines
+            line_width, _ = _text_size(station_name_font, line)
+            name_x = station_center_x - line_width // 2
+            draw.text((name_x, content_y), line, font=station_name_font, fill=primary_color)
+            content_y += station_name_font_size
+        
+        content_y += max(int(height * 0.02), 8)
+        
+        # Station ID (centered)
+        station_id = f"Station {station.get('station_id', '')}"
+        station_id_width, _ = _text_size(station_id_font, station_id)
+        station_id_x = station_center_x - station_id_width // 2
+        draw.text((station_id_x, content_y), station_id, font=station_id_font, fill=primary_color)
+        content_y += station_id_font_size + max(int(height * 0.03), 12)
+        
+        # Tide icon (centered)
+        icon_name = station.get("icon_name", "unknown.png")
+        tide_icon = _load_icon(icon_name, icon_size)
+        icon_x = station_center_x - icon_size // 2
+        image.paste(tide_icon, (icon_x, content_y), tide_icon)
+        content_y += icon_size + max(int(height * 0.02), 8)
+        
+        # Tide type label (centered)
+        tide_type = station.get("tide_type", "No data")
+        tide_type_width, _ = _text_size(tide_label_font, tide_type)
+        tide_type_x = station_center_x - tide_type_width // 2
+        draw.text((tide_type_x, content_y), tide_type, font=tide_label_font, fill=primary_color)
+        content_y += tide_label_font_size + max(int(height * 0.01), 4)
+        
+        # Tide time (centered)
+        tide_time = station.get("tide_time", "--")
+        tide_time_width, _ = _text_size(tide_time_font, tide_time)
+        tide_time_x = station_center_x - tide_time_width // 2
+        draw.text((tide_time_x, content_y), tide_time, font=tide_time_font, fill=primary_color)
+    
+    # Add credit line at the bottom with location and timestamp
+    current_time = datetime.now().strftime("%I:%M %p").lstrip("0")
+    
+    # Get location from Tempest API (for consistent location across all overlays)
+    forecast_data = fetch_forecast_data("imperial")
+    if forecast_data:
+        location = _format_location_with_state(forecast_data.get("location_name", ""))
+    else:
+        location = ""
+    
+    # Build credit text with location and NOAA attribution
+    if location:
+        credit_text = f"{location} | Tide data from NOAA | {current_time}"
+    else:
+        credit_text = f"Tide data from NOAA | {current_time}"
+    
+    # Make credit line bright, bold, and highly visible
+    credit_font = _load_font(credit_font_size)
+    credit_color = (255, 255, 255, 255)
+    
+    # Center the credit text at the bottom
+    credit_width, credit_height = _text_size(credit_font, credit_text)
+    credit_x = (width - credit_width) // 2
+    credit_y = height - credit_height - credit_bottom_margin
     
     # Draw text multiple times with slight offsets to simulate bold effect
     for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:

@@ -9,10 +9,12 @@ from overlay_forecast import (
     build_5day_forecast_payload,
     build_5hour_forecast_payload,
     build_current_conditions_payload,
+    build_tides_payload,
     render_daily_forecast_overlay,
     render_5day_forecast_overlay,
     render_5hour_forecast_overlay,
     render_current_conditions_overlay,
+    render_tides_overlay,
 )
 
 app = Flask(__name__)
@@ -43,7 +45,9 @@ def index() -> Response:
         "  /overlay/daily - Daily forecast overlay\n"
         "  /overlay/5hour - 5-hour forecast overlay\n"
         "  /overlay/5day - 5-day forecast overlay\n"
-        "Query parameters: width, height, theme (dark/light), units (imperial/metric)",
+        "  /overlay/tides - Multi-station tide forecast (up to 4 stations)\n"
+        "Query parameters: width, height, theme (dark/light), units (imperial/metric)\n"
+        "  /overlay/tides accepts: station (repeatable, e.g., ?station=8531942&station=8534720)",
         mimetype="text/plain",
     )
 
@@ -176,6 +180,36 @@ def overlay_current():
         payload["location_name"] = location
     
     image_stream = render_current_conditions_overlay(payload, width, height, theme)
+    
+    response = send_file(image_stream, mimetype="image/png")
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+@app.route("/overlay/tides")
+def overlay_tides():
+    """
+    Multi-station tide forecast overlay endpoint.
+    Displays up to 4 NOAA tide stations in columnar format.
+    Each station shows: name, station ID, tide icon, tide type, and time.
+    Accepts repeatable 'station' query parameter for NOAA station IDs.
+    """
+    width = _parse_int(
+        request.args.get("width"), DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH
+    )
+    height = _parse_int(
+        request.args.get("height"), DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT
+    )
+    theme = request.args.get("theme", "dark")
+    
+    # Get station IDs from query parameters (repeatable parameter)
+    station_ids = request.args.getlist("station")
+    
+    # Build payload with tide data for all stations
+    payload = build_tides_payload(station_ids)
+    
+    # Render the overlay
+    image_stream = render_tides_overlay(payload, width, height, theme)
     
     response = send_file(image_stream, mimetype="image/png")
     response.headers["Cache-Control"] = "no-store, max-age=0"
