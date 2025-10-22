@@ -249,9 +249,10 @@ def render_overlay_image(
     # Calculate space needed at bottom for credit line only (timestamp now included in credit)
     credit_font_size = max(int(height * 0.08), 16)
     credit_bottom_margin = max(int(height * 0.03), 10)
+    credit_top_spacing = max(int(height * 0.08), 30)  # More breathing room above credit line
     
-    # Reserve space at bottom for: credit + margin (MUCH SIMPLER!)
-    bottom_reserved = credit_font_size + credit_bottom_margin + padding
+    # Reserve space at bottom for: credit + top spacing + bottom margin
+    bottom_reserved = credit_font_size + credit_top_spacing + credit_bottom_margin + padding
     
     # Available height for weather section
     available_for_weather = height - weather_top - bottom_reserved
