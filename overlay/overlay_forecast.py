@@ -221,12 +221,12 @@ def build_5hour_forecast_payload(units: str = "imperial") -> Dict:
         wind_direction = hour_data.get("wind_direction")
         conditions = hour_data.get("conditions", "Unknown")
         icon_name = hour_data.get("icon", "unknown")
-        local_time = hour_data.get("local_hour")
+        time_timestamp = hour_data.get("time")
         
-        # Format time
-        if local_time:
+        # Format time from Unix timestamp
+        if time_timestamp:
             try:
-                hour_dt = datetime.fromtimestamp(local_time, tz=timezone.utc).astimezone()
+                hour_dt = datetime.fromtimestamp(time_timestamp, tz=timezone.utc).astimezone()
                 time_label = hour_dt.strftime("%I %p").lstrip("0")  # "10 AM", "3 PM"
             except:
                 time_label = f"Hour {i+1}"
