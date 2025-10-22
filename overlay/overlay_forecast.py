@@ -710,6 +710,21 @@ def render_5hour_forecast_overlay(
         wind_x = hour_center_x - wind_width // 2
         draw.text((wind_x, wind_y), wind_text, font=wind_font, fill=primary_color)
     
+    # Add credit line at the bottom
+    credit_text = "Data from Tempest Weather Station & Network"
+    credit_font_size = max(int(height * 0.06), 12)
+    credit_font = _load_font(credit_font_size)
+    
+    # Use a slightly muted color for the credit (70% opacity)
+    credit_color = tuple(list(primary_color[:3]) + [int(primary_color[3] * 0.7)])
+    
+    # Center the credit text at the bottom with small margin
+    credit_width, credit_height = _text_size(credit_font, credit_text)
+    credit_x = (width - credit_width) // 2
+    credit_y = height - credit_height - max(int(height * 0.03), 10)
+    
+    draw.text((credit_x, credit_y), credit_text, font=credit_font, fill=credit_color)
+    
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     buffer.seek(0)

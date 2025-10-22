@@ -31,7 +31,8 @@ The overlay displays 5 columns (one per hour), each containing:
 1. **Time Label** (top) - e.g., "10 AM", "3 PM"
 2. **Weather Icon** - Visual representation of conditions
 3. **Temperature** - e.g., "72°F" or "22°C"
-4. **Wind Info** (bottom) - Speed and direction, e.g., "8 mph NW"
+4. **Wind Info** - Speed and direction, e.g., "8 mph NW"
+5. **Credit Line** (bottom) - "Data from Tempest Weather Station & Network"
 
 ---
 

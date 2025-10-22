@@ -79,7 +79,7 @@ Three additional endpoints provide forecast data using the Tempest public API:
 
 ```
 GET /overlay/daily   — Today's forecast (high/low, conditions, precipitation)
-GET /overlay/5hour   — 5-hour forecast with time, temp, wind, and icons
+GET /overlay/5hour   — 5-hour forecast with time, temp, wind, and icons (includes credit line)
 GET /overlay/5day    — 5-day forecast with icons and temperatures
 ```
 
