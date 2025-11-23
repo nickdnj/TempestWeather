@@ -2091,6 +2091,9 @@ def build_fishing_report_payload(observation, units: str = "imperial") -> Dict:
     water_temp_station = os.getenv("FISHING_WATER_TEMP_STATION", "8531680")
     station_state = os.getenv("TEMPEST_LOCATION_STATE", "NJ")
     
+    # Fetch tide station name
+    tide_station_name = _fetch_station_name(tide_station)
+    
     # Format location with state
     if station_state:
         location_name = f"{fishing_location}, {station_state}"
@@ -2200,6 +2203,7 @@ def build_fishing_report_payload(observation, units: str = "imperial") -> Dict:
         "tide_next_time": tide_next_time,
         "tide_height": tide_height,
         "tide_icon": tide_icon,
+        "tide_station_name": tide_station_name,
         # Barometric
         "pressure": pressure_text,
         "pressure_trend": pressure_trend,
@@ -2461,9 +2465,13 @@ def render_fishing_report_overlay(
     
     # Credit line
     location = payload.get("location_name", "")
+    tide_station_name = payload.get("tide_station_name", "")
     current_time = datetime.now().strftime("%I:%M %p").lstrip("0")
     
-    credit_text = f"{location} | Tide: NOAA | Astronomy: sunrise-sunset.org | {current_time}"
+    if tide_station_name:
+        credit_text = f"{location} | Tide: {tide_station_name} | {current_time}"
+    else:
+        credit_text = f"{location} | Tide: NOAA | {current_time}"
     
     credit_font = _load_font(credit_font_size)
     credit_color = (255, 255, 255, 255)
