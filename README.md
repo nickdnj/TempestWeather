@@ -30,12 +30,13 @@ From brainstorming overlay layouts to polishing the smallest typography detail, 
 
 ## ✨ Features
 
-### 🎯 Four Powerful Overlay Endpoints
+### 🎯 Five Powerful Overlay Endpoints
 
 1. **`/overlay/current`** — Current conditions with live sensor data
 2. **`/overlay/5hour`** — Next 5 hours of hourly forecast  
 3. **`/overlay/5day`** — 5-day forecast at a glance
 4. **`/overlay/tides`** — Multi-station tide predictions (up to 4 stations)
+5. **`/overlay/fishing`** — Shrewsbury River fishing report (tide stage, barometer, moon, water temp, solunar)
 
 ### 🎨 Designed for Streaming
 
@@ -124,6 +125,26 @@ http://your-ip:8036/overlay/tides?width=1200&height=300&station=8531680&station=
 Shows: Up to 4 NOAA tide stations with next high/low tide times
 Perfect for: Surf reports, fishing streams, coastal monitoring
 
+### Fishing Report
+```
+http://your-ip:8036/overlay/fishing?width=1200&height=300
+```
+Shows: Shrewsbury River fishing conditions with tide stage (incoming/outgoing/slack), barometric pressure trend, moon phase, water temperature, and solunar feeding periods
+Perfect for: Fishing streams, estuary monitoring, angler communities
+
+**What makes this unique:**
+- **Tide Stage:** Know if it's incoming, outgoing, or slack tide (critical for fishing)
+- **Barometric Trend:** Falling pressure = excellent fishing conditions
+- **Moon Phase:** Full/new moons create better tides and feeding activity
+- **Solunar Times:** Major and minor feeding periods based on moon position
+- **Water Temperature:** With fish activity rating (Slow/Fair/Active/Very Active)
+
+**All data is FREE:**
+- Tempest weather station (barometric pressure, wind)
+- NOAA tides (tide stage, next high/low)
+- NOAA water temperature (Station 8531680 Sandy Hook)
+- Astronomy calculations (moon phase, solunar periods)
+
 ---
 
 ## ⚙️ Configuration
@@ -143,6 +164,13 @@ FLASK_PORT=8036
 
 # Timezone (default: America/New_York)
 TZ=America/New_York
+
+# Fishing report configuration (optional - defaults shown)
+FISHING_LOCATION_NAME=Shrewsbury River
+FISHING_LOCATION_LAT=40.3646
+FISHING_LOCATION_LON=-74.0068
+FISHING_TIDE_STATION=8531662
+FISHING_WATER_TEMP_STATION=8531680
 ```
 
 ### Query Parameters
@@ -307,7 +335,8 @@ This project provides all of that in beautiful, stream-ready overlays that updat
 ## 🙏 Acknowledgments
 
 - **WeatherFlow/Tempest** — For creating an amazing weather station with a developer-friendly API
-- **NOAA** — For providing free, public tide prediction data
+- **NOAA** — For providing free, public tide prediction data and water temperature data
+- **Sunrise-Sunset.org** — For providing free astronomy data for solunar calculations
 - **ChatGPT + Nick D.** — For a persistent, joyful collaboration that kept the project moving forward from first commit to polish
 - **Codex CLI on Raspberry Pi** — For letting AI-assisted development live directly beside the hardware it serves
 - **Anthropic/Claude** — For making AI-assisted development accessible and powerful

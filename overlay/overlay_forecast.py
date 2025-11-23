@@ -28,7 +28,10 @@ from tempest_overlay_image import (
     _text_size,
     _load_icon,
 )
-from tide_client import get_next_tide_event, TideEvent
+from tide_client import get_next_tide_event, TideEvent, get_tide_stage
+from astronomy_client import get_moon_data, get_solunar_periods
+from water_temp_client import get_water_temp_with_activity
+from pressure_trend import calculate_pressure_trend, format_pressure
 
 # Tempest API configuration
 TEMPEST_API_BASE = "https://swd.weatherflow.com/swd/rest/better_forecast"
@@ -2058,6 +2061,416 @@ def render_current_conditions_super_overlay(
     credit_width, credit_height = _text_size(credit_font, credit_text)
     credit_x = (width - credit_width) // 2
     credit_y = height - credit_height - max(int(height * 0.03), 10)
+    
+    for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:
+        draw.text((credit_x + offset[0], credit_y + offset[1]), credit_text, font=credit_font, fill=credit_color)
+    
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
+
+
+def build_fishing_report_payload(observation, units: str = "imperial") -> Dict:
+    """
+    Build payload for fishing report overlay.
+    Includes tide stage, barometric pressure, moon phase, water temp, and solunar times.
+    
+    Args:
+        observation: TempestObservation from local UDP listener
+        units: 'imperial' or 'metric'
+    
+    Returns:
+        Dictionary with fishing data formatted for rendering
+    """
+    # Get configuration
+    fishing_location = os.getenv("FISHING_LOCATION_NAME", "Shrewsbury River")
+    fishing_lat = float(os.getenv("FISHING_LOCATION_LAT", "40.3646"))
+    fishing_lon = float(os.getenv("FISHING_LOCATION_LON", "-74.0068"))
+    tide_station = os.getenv("FISHING_TIDE_STATION", "8531662")
+    water_temp_station = os.getenv("FISHING_WATER_TEMP_STATION", "8531680")
+    station_state = os.getenv("TEMPEST_LOCATION_STATE", "NJ")
+    
+    # Format location with state
+    if station_state:
+        location_name = f"{fishing_location}, {station_state}"
+    else:
+        location_name = fishing_location
+    
+    unit_symbol = "°F" if units == "imperial" else "°C"
+    
+    # 1. Get tide stage
+    tide_stage = get_tide_stage(tide_station)
+    if tide_stage:
+        tide_stage_text = tide_stage.stage
+        tide_next_event = tide_stage.next_event
+        tide_next_time = tide_stage.next_time.strftime("%I:%M %p").lstrip("0")
+        tide_height = tide_stage.height or "--"
+        tide_icon = tide_stage.icon_name
+    else:
+        tide_stage_text = "Unknown"
+        tide_next_event = "--"
+        tide_next_time = "--"
+        tide_height = "--"
+        tide_icon = "unknown.png"
+    
+    # 2. Get barometric pressure from Tempest
+    if observation and observation.pressure_hpa:
+        # Convert hPa to inHg
+        pressure_inhg = observation.pressure_hpa * 0.02953
+        # For trend calculation, we'd ideally have historical data
+        # For now, analyze current pressure only
+        pressure_data = calculate_pressure_trend(pressure_inhg, None, mb_to_inhg=False)
+        pressure_text = format_pressure(pressure_inhg, units)
+        pressure_trend = pressure_data.trend
+        pressure_trend_arrow = pressure_data.trend_arrow
+        pressure_rating = pressure_data.fishing_rating
+    else:
+        pressure_text = "--"
+        pressure_trend = "Unknown"
+        pressure_trend_arrow = "?"
+        pressure_rating = "Unknown"
+    
+    # 3. Get moon data and solunar periods
+    import pytz
+    timezone = pytz.timezone(os.getenv("TZ", "America/New_York"))
+    
+    moon_data = get_moon_data(fishing_lat, fishing_lon, timezone)
+    if moon_data:
+        moon_phase = moon_data.phase_name
+        moon_illumination = f"{moon_data.illumination:.0f}%"
+        moon_icon = moon_data.icon_name
+    else:
+        moon_phase = "Unknown"
+        moon_illumination = "--"
+        moon_icon = "unknown.png"
+    
+    solunar_data = get_solunar_periods(fishing_lat, fishing_lon, timezone)
+    if solunar_data:
+        solunar_major = solunar_data.major_label
+        solunar_minor = solunar_data.minor_label
+    else:
+        solunar_major = "N/A"
+        solunar_minor = "N/A"
+    
+    # 4. Get water temperature
+    water_temp, water_activity = get_water_temp_with_activity(water_temp_station, units)
+    if water_temp:
+        water_temp_text = f"{water_temp:.0f}{unit_symbol}"
+    else:
+        water_temp_text = "--"
+        water_activity = "Unknown"
+    
+    # 5. Get wind from Tempest
+    if observation and observation.wind_speed_ms:
+        if units == "metric":
+            wind_speed = observation.wind_speed_ms * 3.6  # m/s to km/h
+            wind_unit = "km/h"
+        else:
+            wind_speed = observation.wind_speed_ms * 2.23694  # m/s to mph
+            wind_unit = "mph"
+        
+        if observation.wind_direction_deg is not None:
+            wind_dir = _degrees_to_compass(observation.wind_direction_deg)
+            wind_text = f"{int(wind_speed)} {wind_unit} {wind_dir}"
+        else:
+            wind_text = f"{int(wind_speed)} {wind_unit}"
+    else:
+        wind_text = "--"
+    
+    # Generate cache key
+    cache_key = (
+        "fishing",
+        tide_stage_text,
+        tide_next_time,
+        pressure_text,
+        moon_phase,
+        water_temp_text,
+        wind_text,
+        units
+    )
+    
+    return {
+        "error": False,
+        "title": "Fishing Report",
+        "location_name": location_name,
+        # Tide
+        "tide_stage": tide_stage_text,
+        "tide_next_event": tide_next_event,
+        "tide_next_time": tide_next_time,
+        "tide_height": tide_height,
+        "tide_icon": tide_icon,
+        # Barometric
+        "pressure": pressure_text,
+        "pressure_trend": pressure_trend,
+        "pressure_trend_arrow": pressure_trend_arrow,
+        "pressure_rating": pressure_rating,
+        # Moon
+        "moon_phase": moon_phase,
+        "moon_illumination": moon_illumination,
+        "moon_icon": moon_icon,
+        # Water Temperature
+        "water_temp": water_temp_text,
+        "water_activity": water_activity,
+        # Solunar
+        "solunar_major": solunar_major,
+        "solunar_minor": solunar_minor,
+        # Wind
+        "wind": wind_text,
+        # Cache
+        "cache_key": cache_key,
+    }
+
+
+def render_fishing_report_overlay(
+    payload: Dict, width: int, height: int, theme: str
+) -> io.BytesIO:
+    """
+    Render fishing report overlay with 5-column layout plus wind row.
+    
+    Columns: Tide | Barometer | Moon Phase | Water Temp | Solunar
+    Bottom: Wind conditions
+    
+    Args:
+        payload: Fishing data from build_fishing_report_payload
+        width: Image width in pixels
+        height: Image height in pixels
+        theme: 'dark' or 'light'
+    
+    Returns:
+        BytesIO buffer containing PNG image
+    """
+    theme = theme.lower()
+    style = THEME_STYLES.get(theme, THEME_STYLES["dark"])
+    
+    # Create transparent image
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    
+    padding = max(int(height * 0.06), 24)
+    primary_color = style["text"]
+    
+    if payload.get("error"):
+        # Render error message
+        title_font_size = max(int(height * 0.25), 48)
+        title_font = _load_font(title_font_size)
+        message_font_size = max(int(height * 0.15), 32)
+        message_font = _load_font(message_font_size)
+        
+        title = payload.get("title", "Fishing Report")
+        message = payload.get("message", "Unable to load fishing data")
+        
+        title_width, title_height = _text_size(title_font, title)
+        title_x = (width - title_width) // 2
+        title_y = padding
+        draw.text((title_x, title_y), title, font=title_font, fill=primary_color)
+        
+        message_width, message_height = _text_size(message_font, message)
+        message_x = (width - message_width) // 2
+        message_y = title_y + title_height + padding
+        draw.text((message_x, message_y), message, font=message_font, fill=primary_color)
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer
+    
+    # Title
+    inner_left = padding * 2
+    current_y = padding
+    
+    title_font_size = max(int(height * 0.15), 36)
+    title_font = _load_font(title_font_size)
+    title = payload.get("title", "Fishing Report")
+    draw.text((inner_left, current_y), title, font=title_font, fill=primary_color)
+    current_y += title_font_size + max(int(height * 0.04), 16)
+    
+    # Calculate space for credit line and wind row
+    credit_font_size = max(int(height * 0.08), 16)
+    credit_bottom_margin = max(int(height * 0.03), 10)
+    credit_top_spacing = max(int(height * 0.08), 30)
+    wind_row_height = max(int(height * 0.12), 40)
+    bottom_reserved = credit_font_size + credit_top_spacing + credit_bottom_margin + padding + wind_row_height
+    
+    remaining_height = height - current_y - bottom_reserved
+    available_width = width - inner_left - padding
+    
+    # 5-Column Layout
+    num_columns = 5
+    column_width = available_width // num_columns
+    column_spacing = max(int(column_width * 0.05), 10)
+    content_width = column_width - column_spacing
+    
+    # Font sizes
+    label_font_size = max(int(remaining_height * 0.12), 16)
+    label_font = _load_font(label_font_size)
+    value_font_size = max(int(remaining_height * 0.16), 20)
+    value_font = _load_font(value_font_size)
+    sub_font_size = max(int(remaining_height * 0.12), 14)
+    sub_font = _load_font(sub_font_size)
+    icon_size = max(int(remaining_height * 0.35), 48)
+    
+    # Column 1: Tide
+    col1_x = inner_left
+    col1_center_x = col1_x + content_width // 2
+    col_y = current_y
+    
+    # Label
+    label = "TIDE"
+    label_width, _ = _text_size(label_font, label)
+    draw.text((col1_center_x - label_width // 2, col_y), label, font=label_font, fill=primary_color)
+    col_y += label_font_size + max(int(height * 0.02), 8)
+    
+    # Icon
+    tide_icon = _load_icon(payload.get("tide_icon", "high_tide.png"), icon_size)
+    icon_x = col1_center_x - icon_size // 2
+    image.paste(tide_icon, (icon_x, col_y), tide_icon)
+    col_y += icon_size + max(int(height * 0.02), 8)
+    
+    # Stage
+    stage = payload.get("tide_stage", "--")
+    stage_width, _ = _text_size(value_font, stage)
+    draw.text((col1_center_x - stage_width // 2, col_y), stage, font=value_font, fill=primary_color)
+    col_y += value_font_size + 4
+    
+    # Next event
+    next_event = f"{payload.get('tide_next_event', '--')} @ {payload.get('tide_next_time', '--')}"
+    next_width, _ = _text_size(sub_font, next_event)
+    draw.text((col1_center_x - next_width // 2, col_y), next_event, font=sub_font, fill=primary_color)
+    
+    # Column 2: Barometric Pressure
+    col2_x = inner_left + column_width
+    col2_center_x = col2_x + content_width // 2
+    col_y = current_y
+    
+    label = "BAROMETER"
+    label_width, _ = _text_size(label_font, label)
+    draw.text((col2_center_x - label_width // 2, col_y), label, font=label_font, fill=primary_color)
+    col_y += label_font_size + max(int(height * 0.02), 8)
+    
+    # Use wind icon as placeholder for barometer (or create barometer.png)
+    pressure_icon = _load_icon("wind.png", icon_size)
+    icon_x = col2_center_x - icon_size // 2
+    image.paste(pressure_icon, (icon_x, col_y), pressure_icon)
+    col_y += icon_size + max(int(height * 0.02), 8)
+    
+    # Pressure
+    pressure = payload.get("pressure", "--")
+    pressure_width, _ = _text_size(value_font, pressure)
+    draw.text((col2_center_x - pressure_width // 2, col_y), pressure, font=value_font, fill=primary_color)
+    col_y += value_font_size + 4
+    
+    # Trend and rating
+    trend_text = f"{payload.get('pressure_trend_arrow', '?')} {payload.get('pressure_trend', 'Unknown')}"
+    trend_width, _ = _text_size(sub_font, trend_text)
+    draw.text((col2_center_x - trend_width // 2, col_y), trend_text, font=sub_font, fill=primary_color)
+    col_y += sub_font_size + 2
+    rating = payload.get("pressure_rating", "--")
+    rating_width, _ = _text_size(sub_font, rating)
+    draw.text((col2_center_x - rating_width // 2, col_y), rating, font=sub_font, fill=primary_color)
+    
+    # Column 3: Moon Phase
+    col3_x = inner_left + (column_width * 2)
+    col3_center_x = col3_x + content_width // 2
+    col_y = current_y
+    
+    label = "MOON PHASE"
+    label_width, _ = _text_size(label_font, label)
+    draw.text((col3_center_x - label_width // 2, col_y), label, font=label_font, fill=primary_color)
+    col_y += label_font_size + max(int(height * 0.02), 8)
+    
+    # Moon icon
+    moon_icon = _load_icon(payload.get("moon_icon", "unknown.png"), icon_size)
+    icon_x = col3_center_x - icon_size // 2
+    image.paste(moon_icon, (icon_x, col_y), moon_icon)
+    col_y += icon_size + max(int(height * 0.02), 8)
+    
+    # Phase name
+    phase = payload.get("moon_phase", "--")
+    phase_width, _ = _text_size(value_font, phase)
+    draw.text((col3_center_x - phase_width // 2, col_y), phase, font=value_font, fill=primary_color)
+    col_y += value_font_size + 4
+    
+    # Illumination
+    illumination = payload.get("moon_illumination", "--")
+    illum_width, _ = _text_size(sub_font, illumination)
+    draw.text((col3_center_x - illum_width // 2, col_y), illumination, font=sub_font, fill=primary_color)
+    
+    # Column 4: Water Temperature
+    col4_x = inner_left + (column_width * 3)
+    col4_center_x = col4_x + content_width // 2
+    col_y = current_y
+    
+    label = "WATER TEMP"
+    label_width, _ = _text_size(label_font, label)
+    draw.text((col4_center_x - label_width // 2, col_y), label, font=label_font, fill=primary_color)
+    col_y += label_font_size + max(int(height * 0.02), 8)
+    
+    # Use humidity icon as placeholder for thermometer
+    temp_icon = _load_icon("humidity.png", icon_size)
+    icon_x = col4_center_x - icon_size // 2
+    image.paste(temp_icon, (icon_x, col_y), temp_icon)
+    col_y += icon_size + max(int(height * 0.02), 8)
+    
+    # Temperature
+    temp = payload.get("water_temp", "--")
+    temp_width, _ = _text_size(value_font, temp)
+    draw.text((col4_center_x - temp_width // 2, col_y), temp, font=value_font, fill=primary_color)
+    col_y += value_font_size + 4
+    
+    # Activity
+    activity = payload.get("water_activity", "--")
+    activity_width, _ = _text_size(sub_font, activity)
+    draw.text((col4_center_x - activity_width // 2, col_y), activity, font=sub_font, fill=primary_color)
+    
+    # Column 5: Solunar
+    col5_x = inner_left + (column_width * 4)
+    col5_center_x = col5_x + content_width // 2
+    col_y = current_y
+    
+    label = "SOLUNAR"
+    label_width, _ = _text_size(label_font, label)
+    draw.text((col5_center_x - label_width // 2, col_y), label, font=label_font, fill=primary_color)
+    col_y += label_font_size + max(int(height * 0.02), 8)
+    
+    # Use clear icon as sun placeholder for solunar
+    solunar_icon = _load_icon("clear.png", icon_size)
+    icon_x = col5_center_x - icon_size // 2
+    image.paste(solunar_icon, (icon_x, col_y), solunar_icon)
+    col_y += icon_size + max(int(height * 0.02), 8)
+    
+    # Major period
+    major_text = f"Major: {payload.get('solunar_major', 'N/A')}"
+    major_width, _ = _text_size(value_font, major_text)
+    draw.text((col5_center_x - major_width // 2, col_y), major_text, font=value_font, fill=primary_color)
+    col_y += value_font_size + 4
+    
+    # Minor period
+    minor_text = f"Minor: {payload.get('solunar_minor', 'N/A')}"
+    minor_width, _ = _text_size(sub_font, minor_text)
+    draw.text((col5_center_x - minor_width // 2, col_y), minor_text, font=sub_font, fill=primary_color)
+    
+    # Wind row (full width, below columns)
+    wind_y = height - bottom_reserved + wind_row_height // 4
+    wind_font_size = max(int(wind_row_height * 0.4), 20)
+    wind_font = _load_font(wind_font_size)
+    wind_text = f"Wind: {payload.get('wind', '--')}"
+    wind_width, _ = _text_size(wind_font, wind_text)
+    wind_x = (width - wind_width) // 2
+    draw.text((wind_x, wind_y), wind_text, font=wind_font, fill=primary_color)
+    
+    # Credit line
+    location = payload.get("location_name", "")
+    current_time = datetime.now().strftime("%I:%M %p").lstrip("0")
+    
+    credit_text = f"{location} | Tide: NOAA | Astronomy: sunrise-sunset.org | {current_time}"
+    
+    credit_font = _load_font(credit_font_size)
+    credit_color = (255, 255, 255, 255)
+    
+    credit_width, credit_height = _text_size(credit_font, credit_text)
+    credit_x = (width - credit_width) // 2
+    credit_y = height - credit_height - credit_bottom_margin
     
     for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:
         draw.text((credit_x + offset[0], credit_y + offset[1]), credit_text, font=credit_font, fill=credit_color)

@@ -16,6 +16,8 @@ from overlay_forecast import (
     build_current_conditions_super_payload,
     render_current_conditions_super_overlay,
     render_tides_overlay,
+    build_fishing_report_payload,
+    render_fishing_report_overlay,
 )
 
 app = Flask(__name__)
@@ -47,6 +49,7 @@ def index() -> Response:
         "  /overlay/5hour - 5-hour forecast overlay\n"
         "  /overlay/5day - 5-day forecast overlay\n"
         "  /overlay/tides - Multi-station tide forecast (up to 4 stations)\n"
+        "  /overlay/fishing - Fishing report for Shrewsbury River (tide, barometer, moon, water temp, solunar)\n"
         "Query parameters: width, height, theme (dark/light), units (imperial/metric)\n"
         "  /overlay/tides accepts: station (repeatable, e.g., ?station=8531942&station=8534720)",
         mimetype="text/plain",
@@ -223,6 +226,36 @@ def overlay_tides():
     
     # Render the overlay
     image_stream = render_tides_overlay(payload, width, height, theme)
+    
+    response = send_file(image_stream, mimetype="image/png")
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+@app.route("/overlay/fishing")
+def overlay_fishing():
+    """
+    Fishing report overlay for Shrewsbury River.
+    Displays: tide stage, barometric pressure, moon phase, water temp, and solunar times.
+    Query parameters: width, height, theme (dark/light), units (imperial/metric)
+    """
+    width = _parse_int(
+        request.args.get("width"), DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH
+    )
+    height = _parse_int(
+        request.args.get("height"), DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT
+    )
+    theme = request.args.get("theme", "dark")
+    units = request.args.get("units", "imperial")
+    
+    # Get latest Tempest observation for barometric pressure and wind
+    observation = get_latest_observation()
+    
+    # Build payload with all fishing data
+    payload = build_fishing_report_payload(observation, units)
+    
+    # Render the overlay
+    image_stream = render_fishing_report_overlay(payload, width, height, theme)
     
     response = send_file(image_stream, mimetype="image/png")
     response.headers["Cache-Control"] = "no-store, max-age=0"
