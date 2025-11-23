@@ -11,6 +11,10 @@ from overlay_forecast import (
     render_5day_forecast_overlay,
     render_5hour_forecast_overlay,
     render_current_conditions_overlay,
+    build_current_conditions_expanded_payload,
+    render_current_conditions_expanded_overlay,
+    build_current_conditions_super_payload,
+    render_current_conditions_super_overlay,
     render_tides_overlay,
 )
 
@@ -38,6 +42,8 @@ def index() -> Response:
         "Tempest Weather Overlay service.\n"
         "Available endpoints:\n"
         "  /overlay/current - Current conditions overlay\n"
+        "  /overlay/current_expanded - Expanded current conditions overlay (more data)\n"
+        "  /overlay/current_super - Super-expanded current conditions (all Tempest metrics)\n"
         "  /overlay/5hour - 5-hour forecast overlay\n"
         "  /overlay/5day - 5-day forecast overlay\n"
         "  /overlay/tides - Multi-station tide forecast (up to 4 stations)\n"
@@ -122,6 +128,71 @@ def overlay_current():
         payload["location_name"] = location
     
     image_stream = render_current_conditions_overlay(payload, width, height, theme)
+    
+    response = send_file(image_stream, mimetype="image/png")
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+@app.route("/overlay/current_expanded")
+def overlay_current_expanded():
+    """
+    Expanded current conditions overlay endpoint.
+    Displays current conditions with additional metrics (Feels Like, UV, Pressure, Rain).
+    Uses a grid layout for better data density.
+    """
+    width = _parse_int(
+        request.args.get("width"), DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH
+    )
+    height = _parse_int(
+        request.args.get("height"), DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT
+    )
+    theme = request.args.get("theme", "dark")
+    units = request.args.get("units", "imperial")
+    
+    # Build payload from Tempest API
+    observation = get_latest_observation()
+    payload = build_current_conditions_expanded_payload(observation, units)
+    
+    # Optional location override via query parameter
+    location = request.args.get("location", "").strip()
+    if location:
+        payload["location_name"] = location
+    
+    image_stream = render_current_conditions_expanded_overlay(payload, width, height, theme)
+    
+    response = send_file(image_stream, mimetype="image/png")
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+@app.route("/overlay/current_super")
+def overlay_current_super():
+    """
+    Super-expanded current conditions overlay endpoint.
+    Displays ALL available Tempest metrics in a comprehensive 3x3 grid:
+    Temperature, Wind, Wind Gust, Humidity, Feels Like, Dew Point,
+    UV Index, Solar Radiation, Pressure, Rain Today, Lightning.
+    """
+    width = _parse_int(
+        request.args.get("width"), DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH
+    )
+    height = _parse_int(
+        request.args.get("height"), DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT
+    )
+    theme = request.args.get("theme", "dark")
+    units = request.args.get("units", "imperial")
+    
+    # Build payload from Tempest API
+    observation = get_latest_observation()
+    payload = build_current_conditions_super_payload(observation, units)
+    
+    # Optional location override via query parameter
+    location = request.args.get("location", "").strip()
+    if location:
+        payload["location_name"] = location
+    
+    image_stream = render_current_conditions_super_overlay(payload, width, height, theme)
     
     response = send_file(image_stream, mimetype="image/png")
     response.headers["Cache-Control"] = "no-store, max-age=0"

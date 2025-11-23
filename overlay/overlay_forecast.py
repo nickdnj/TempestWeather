@@ -1367,3 +1367,702 @@ def render_tides_overlay(
     image.save(buffer, format="PNG")
     buffer.seek(0)
     return buffer
+
+
+def build_current_conditions_expanded_payload(observation, units: str = "imperial") -> Dict:
+    """
+    Build payload for expanded current conditions overlay using Tempest API.
+    Includes additional metrics like Feels Like, UV, Pressure, Rain.
+    
+    Args:
+        observation: TempestObservation from local UDP listener (used as fallback)
+        units: 'imperial' or 'metric'
+    
+    Returns:
+        Dictionary with expanded current conditions data formatted for rendering
+    """
+    # Fetch data from Tempest API for accurate icon and location
+    forecast_data = fetch_forecast_data(units)
+    
+    station_id = TEMPEST_STATION_ID
+    unit_symbol = "°F" if units == "imperial" else "°C"
+    wind_unit = "mph" if units == "imperial" else "km/h"
+    pressure_unit = "inHg" if units == "imperial" else "mb"
+    rain_unit = "in" if units == "imperial" else "mm"
+    
+    if not forecast_data or "current_conditions" not in forecast_data:
+        # Fallback to "waiting" state
+        return {
+            "error": False,
+            "title": "Current Conditions",
+            "temperature": "--",
+            "wind": "--",
+            "humidity": "--",
+            "feels_like": "--",
+            "uv": "--",
+            "pressure": "--",
+            "rain_today": "--",
+            "icon_name": "unknown.png",
+            "location_name": _format_location_with_state(forecast_data.get("location_name", "")) if forecast_data else "",
+            "station_id": station_id,
+            "cache_key": ("waiting", "expanded", units),
+        }
+    
+    # Extract location from API
+    location_name = _format_location_with_state(forecast_data.get("location_name", ""))
+    
+    # Get current conditions from API
+    current = forecast_data.get("current_conditions", {})
+    
+    # Temperature
+    temp = current.get("air_temperature")
+    temperature = f"{int(temp)}{unit_symbol}" if temp is not None else "--"
+    
+    # Feels Like
+    feels_like_val = current.get("feels_like")
+    feels_like = f"{int(feels_like_val)}{unit_symbol}" if feels_like_val is not None else "--"
+    
+    # Wind
+    wind_speed = current.get("wind_avg")
+    wind_direction = current.get("wind_direction")
+    if wind_speed is not None:
+        wind_text = f"{int(wind_speed)} {wind_unit}"
+        if wind_direction is not None:
+            wind_text += f" {_degrees_to_compass(wind_direction)}"
+        wind = wind_text
+    else:
+        wind = "--"
+    
+    # Humidity
+    humidity_val = current.get("relative_humidity")
+    humidity = f"{int(humidity_val)}%" if humidity_val is not None else "--"
+    
+    # UV Index
+    uv_val = current.get("uv")
+    uv = f"{uv_val:.1f}" if uv_val is not None else "--"
+    
+    # Pressure
+    pressure_val = current.get("sea_level_pressure")
+    pressure = f"{pressure_val:.2f} {pressure_unit}" if pressure_val is not None else "--"
+    if units == "metric" and pressure_val is not None:
+         pressure = f"{int(pressure_val)} {pressure_unit}"
+
+    # Rain Today
+    rain_val = current.get("precip_accum_local_day")
+    rain_today = f"{rain_val:.2f} {rain_unit}" if rain_val is not None else "--"
+    
+    # Icon from API
+    icon_api_name = current.get("icon", "unknown")
+    icon_name = FORECAST_ICON_MAP.get(icon_api_name, "unknown.png")
+    
+    # Conditions text (e.g. "Cloudy") - API doesn't always provide this directly in current_conditions,
+    # but we can infer or map it. For now, we'll use the icon name as a proxy or empty if not available.
+    # Actually, let's check if 'conditions' is in current_conditions.
+    conditions = current.get("conditions", "")
+    if not conditions:
+        # Fallback: Capitalize icon name (e.g. "cloudy" -> "Cloudy")
+        conditions = icon_api_name.replace("-", " ").title()
+
+    cache_key = (
+        current.get("time"),
+        temp,
+        feels_like_val,
+        wind_speed,
+        humidity_val,
+        uv_val,
+        pressure_val,
+        rain_val,
+        units,
+    )
+    
+    return {
+        "error": False,
+        "title": "Current Conditions",
+        "temperature": temperature,
+        "conditions": conditions,
+        "wind": wind,
+        "humidity": humidity,
+        "feels_like": feels_like,
+        "uv": uv,
+        "pressure": pressure,
+        "rain_today": rain_today,
+        "icon_name": icon_name,
+        "location_name": location_name,
+        "station_id": station_id,
+        "cache_key": cache_key,
+    }
+
+
+def render_current_conditions_expanded_overlay(
+    payload: Dict, width: int, height: int, theme: str
+) -> io.BytesIO:
+    """
+    Render expanded current conditions overlay with a grid layout.
+    
+    Args:
+        payload: Expanded current conditions data
+        width: Image width in pixels
+        height: Image height in pixels
+        theme: 'dark' or 'light'
+    
+    Returns:
+        BytesIO buffer containing PNG image
+    """
+    theme = theme.lower()
+    style = THEME_STYLES.get(theme, THEME_STYLES["dark"])
+    
+    # Create transparent image
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    
+    padding = max(int(height * 0.06), 24)
+    primary_color = style["text"]
+    
+    # Title
+    inner_left = padding * 2
+    current_y = padding
+    
+    title_font_size = max(int(height * 0.15), 36) # Smaller title like 5-day
+    title_font = _load_font(title_font_size)
+    title = payload.get("title", "Current Conditions")
+    draw.text((inner_left, current_y), title, font=title_font, fill=primary_color)
+    current_y += title_font_size + max(int(height * 0.04), 16)
+    
+    # Calculate space needed at bottom for credit line
+    credit_font_size = max(int(height * 0.08), 16)
+    credit_bottom_margin = max(int(height * 0.03), 10)
+    credit_top_spacing = max(int(height * 0.08), 30)
+    bottom_reserved = credit_font_size + credit_top_spacing + credit_bottom_margin + padding
+    
+    remaining_height = height - current_y - bottom_reserved
+    available_width = width - inner_left - padding
+    
+    # Layout: Left Column (25%) for Main Temp/Icon, Right Column (75%) for Grid
+    left_col_width = int(available_width * 0.25)
+    right_col_width = available_width - left_col_width
+    
+    # --- Left Column: Icon, Temp, Conditions ---
+    left_center_x = inner_left + left_col_width // 2
+    
+    # Icon (smaller to prevent overlap)
+    icon_size = max(int(remaining_height * 0.4), 48)
+    icon_name = payload.get("icon_name", "unknown.png")
+    condition_icon = _load_icon(icon_name, icon_size)
+    icon_x = left_center_x - icon_size // 2
+    icon_y = current_y + max((remaining_height - icon_size) // 2 - int(remaining_height * 0.1), 0)
+    image.paste(condition_icon, (icon_x, icon_y), condition_icon)
+    
+    # Temperature (below icon)
+    temp_font_size = max(int(remaining_height * 0.22), 28)
+    temp_font = _load_font(temp_font_size)
+    temperature = payload.get("temperature", "--")
+    temp_width, temp_height = _text_size(temp_font, temperature)
+    temp_x = left_center_x - temp_width // 2
+    temp_y = icon_y + icon_size + max(int(height * 0.01), 4)
+    draw.text((temp_x, temp_y), temperature, font=temp_font, fill=primary_color)
+    
+    # Conditions Text (below temp)
+    cond_font_size = max(int(remaining_height * 0.09), 14)
+    cond_font = _load_font(cond_font_size)
+    conditions = payload.get("conditions", "")
+    cond_width, _ = _text_size(cond_font, conditions)
+    cond_x = left_center_x - cond_width // 2
+    cond_y = temp_y + temp_height + max(int(height * 0.01), 4)
+    draw.text((cond_x, cond_y), conditions, font=cond_font, fill=primary_color)
+    
+    # --- Right Column: 2x3 Grid ---
+    # Grid items: Wind, Humidity, Feels Like, UV, Pressure, Rain
+    grid_x_start = inner_left + left_col_width
+    grid_width = right_col_width
+    
+    num_cols = 3
+    num_rows = 2
+    cell_width = grid_width // num_cols
+    cell_height = remaining_height // num_rows
+    
+    grid_items = [
+        {"label": "Wind", "value": payload.get("wind", "--"), "icon": "wind.png"},
+        {"label": "Humidity", "value": payload.get("humidity", "--"), "icon": "humidity.png"},
+        {"label": "Feels Like", "value": payload.get("feels_like", "--"), "icon": None},
+        {"label": "UV Index", "value": payload.get("uv", "--"), "icon": None},
+        {"label": "Pressure", "value": payload.get("pressure", "--"), "icon": None},
+        {"label": "Rain Today", "value": payload.get("rain_today", "--"), "icon": None},
+    ]
+    
+    # Smaller font sizes to prevent overlap
+    label_font_size = max(int(cell_height * 0.15), 12)
+    label_font = _load_font(label_font_size)
+    value_font_size = max(int(cell_height * 0.20), 14)
+    value_font = _load_font(value_font_size)
+    
+    for i, item in enumerate(grid_items):
+        row = i // num_cols
+        col = i % num_cols
+        
+        cell_x = grid_x_start + (col * cell_width)
+        cell_y = current_y + (row * cell_height)
+        cell_center_x = cell_x + cell_width // 2
+        cell_center_y = cell_y + cell_height // 2
+        
+        # Calculate total height of content to center vertically with more spacing
+        spacing_between = max(int(cell_height * 0.08), 6)
+        content_height = label_font_size + spacing_between + value_font_size
+        start_y = cell_center_y - content_height // 2
+        
+        # Draw Label
+        label = item["label"]
+        label_width, _ = _text_size(label_font, label)
+        draw.text((cell_center_x - label_width // 2, start_y), label, font=label_font, fill=primary_color)
+        
+        # Draw Value (with optional icon)
+        value = item["value"]
+        value_y = start_y + label_font_size + spacing_between
+        
+        if item["icon"]:
+            # Icon + Value - align icon with text baseline
+            icon_size_small = int(value_font_size * 0.9)  # Slightly smaller icon
+            icon = _load_icon(item["icon"], icon_size_small)
+            val_width, val_height = _text_size(value_font, value)
+            
+            # Increase spacing significantly to prevent overlap
+            icon_spacing = max(int(cell_width * 0.08), 10)
+            
+            total_width = icon_size_small + icon_spacing + val_width
+            
+            start_x = cell_center_x - total_width // 2
+            
+            # Align icon vertically with text (adjust for text baseline)
+            icon_y = value_y + (val_height - icon_size_small) // 2
+            image.paste(icon, (start_x, icon_y), icon)
+            draw.text((start_x + icon_size_small + icon_spacing, value_y), value, font=value_font, fill=primary_color)
+        else:
+            # Just Value
+            val_width, _ = _text_size(value_font, value)
+            draw.text((cell_center_x - val_width // 2, value_y), value, font=value_font, fill=primary_color)
+
+    # Add credit line at the bottom
+    location = payload.get("location_name", "")
+    station_id = payload.get("station_id", "")
+    current_time = datetime.now().strftime("%I:%M %p").lstrip("0")
+    
+    if location and station_id:
+        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network | {current_time}"
+    elif station_id:
+        credit_text = f"Station {station_id} | Tempest Weather Network | {current_time}"
+    else:
+        credit_text = f"Data from Tempest Weather Network | {current_time}"
+    
+    credit_font = _load_font(credit_font_size)
+    credit_color = (255, 255, 255, 255)
+    
+    credit_width, credit_height = _text_size(credit_font, credit_text)
+    credit_x = (width - credit_width) // 2
+    credit_y = height - credit_height - max(int(height * 0.03), 10)
+    
+    for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:
+        draw.text((credit_x + offset[0], credit_y + offset[1]), credit_text, font=credit_font, fill=credit_color)
+    
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
+
+
+def build_current_conditions_super_payload(observation, units: str = "imperial") -> Dict:
+    """
+    Build payload for super-expanded current conditions overlay using Tempest API.
+    Includes ALL available metrics: Temperature, Feels Like, Wind, Wind Gust, Humidity, 
+    Dew Point, UV, Pressure, Rain Today, Solar Radiation, Lightning.
+    
+    Args:
+        observation: TempestObservation from local UDP listener (used for real-time local data)
+        units: 'imperial' or 'metric'
+    
+    Returns:
+        Dictionary with comprehensive current conditions data formatted for rendering
+    """
+    # Fetch data from Tempest API for accurate icon and location
+    forecast_data = fetch_forecast_data(units)
+    
+    station_id = TEMPEST_STATION_ID
+    unit_symbol = "°F" if units == "imperial" else "°C"
+    wind_unit = "mph" if units == "imperial" else "km/h"
+    pressure_unit = "inHg" if units == "imperial" else "mb"
+    rain_unit = "in" if units == "imperial" else "mm"
+    
+    if not forecast_data or "current_conditions" not in forecast_data:
+        # Fallback to "waiting" state
+        return {
+            "error": False,
+            "title": "Current Conditions",
+            "temperature": "--",
+            "wind": "--",
+            "wind_gust": "--",
+            "humidity": "--",
+            "feels_like": "--",
+            "dew_point": "--",
+            "uv": "--",
+            "solar": "--",
+            "pressure": "--",
+            "rain_today": "--",
+            "lightning": "--",
+            "icon_name": "unknown.png",
+            "location_name": _format_location_with_state(forecast_data.get("location_name", "")) if forecast_data else "",
+            "station_id": station_id,
+            "cache_key": ("waiting", "super", units),
+        }
+    
+    # Extract location from API
+    location_name = _format_location_with_state(forecast_data.get("location_name", ""))
+    
+    # Get current conditions from API
+    current = forecast_data.get("current_conditions", {})
+    
+    # Temperature
+    temp = current.get("air_temperature")
+    temperature = f"{int(temp)}{unit_symbol}" if temp is not None else "--"
+    
+    # Feels Like
+    feels_like_val = current.get("feels_like")
+    feels_like = f"{int(feels_like_val)}{unit_symbol}" if feels_like_val is not None else "--"
+    
+    # Dew Point
+    dew_point_val = current.get("dew_point")
+    dew_point = f"{int(dew_point_val)}{unit_symbol}" if dew_point_val is not None else "--"
+    
+    # Wind Average
+    wind_speed = current.get("wind_avg")
+    wind_direction = current.get("wind_direction")
+    if wind_speed is not None:
+        wind_text = f"{int(wind_speed)} {wind_unit}"
+        if wind_direction is not None:
+            wind_text += f" {_degrees_to_compass(wind_direction)}"
+        wind = wind_text
+    else:
+        wind = "--"
+    
+    # Wind Gust
+    wind_gust_val = current.get("wind_gust")
+    if wind_gust_val is not None:
+        wind_gust = f"{int(wind_gust_val)} {wind_unit}"
+    else:
+        wind_gust = "--"
+    
+    # Humidity
+    humidity_val = current.get("relative_humidity")
+    humidity = f"{int(humidity_val)}%" if humidity_val is not None else "--"
+    
+    # UV Index
+    uv_val = current.get("uv")
+    uv = f"{uv_val:.1f}" if uv_val is not None else "--"
+    
+    # Solar Radiation
+    solar_val = current.get("solar_radiation")
+    solar = f"{int(solar_val)} W/m²" if solar_val is not None else "--"
+    
+    # Pressure
+    pressure_val = current.get("sea_level_pressure")
+    pressure = f"{pressure_val:.2f} {pressure_unit}" if pressure_val is not None else "--"
+    if units == "metric" and pressure_val is not None:
+         pressure = f"{int(pressure_val)} {pressure_unit}"
+
+    # Rain Today
+    rain_val = current.get("precip_accum_local_day")
+    rain_today = f"{rain_val:.2f} {rain_unit}" if rain_val is not None else "--"
+    
+    # Lightning (last 3 hours) - need to check if available in API
+    lightning_val = current.get("lightning_strike_count_last_3hr")
+    if lightning_val is not None:
+        lightning = f"{int(lightning_val)} strikes" if lightning_val > 0 else "None"
+    else:
+        lightning = "--"
+    
+    # Icon from API
+    icon_api_name = current.get("icon", "unknown")
+    icon_name = FORECAST_ICON_MAP.get(icon_api_name, "unknown.png")
+    
+    # Conditions text
+    conditions = current.get("conditions", "")
+    if not conditions:
+        conditions = icon_api_name.replace("-", " ").title()
+
+    cache_key = (
+        current.get("time"),
+        temp,
+        feels_like_val,
+        dew_point_val,
+        wind_speed,
+        wind_gust_val,
+        humidity_val,
+        uv_val,
+        solar_val,
+        pressure_val,
+        rain_val,
+        lightning_val,
+        units,
+    )
+    
+    return {
+        "error": False,
+        "title": "Current Conditions",
+        "temperature": temperature,
+        "conditions": conditions,
+        "wind": wind,
+        "wind_gust": wind_gust,
+        "humidity": humidity,
+        "feels_like": feels_like,
+        "dew_point": dew_point,
+        "uv": uv,
+        "solar": solar,
+        "pressure": pressure,
+        "rain_today": rain_today,
+        "lightning": lightning,
+        "icon_name": icon_name,
+        "location_name": location_name,
+        "station_id": station_id,
+        "cache_key": cache_key,
+    }
+
+
+def render_current_conditions_super_overlay(
+    payload: Dict, width: int, height: int, theme: str
+) -> io.BytesIO:
+    """
+    Render super-expanded current conditions overlay with 5-column layout.
+    Column 1: Icon, Temperature, Conditions, Feels Like
+    Column 2: Wind, Wind Gust
+    Column 3: Humidity, Dew Point
+    Column 4: UV Index, Solar
+    Column 5: Pressure, Rain Today
+    
+    Args:
+        payload: Super-expanded current conditions data
+        width: Image width in pixels
+        height: Image height in pixels
+        theme: 'dark' or 'light'
+    
+    Returns:
+        BytesIO buffer containing PNG image
+    """
+    theme = theme.lower()
+    style = THEME_STYLES.get(theme, THEME_STYLES["dark"])
+    
+    # Create transparent image
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    
+    padding = max(int(height * 0.06), 24)
+    primary_color = style["text"]
+    
+    # Title
+    inner_left = padding * 2
+    current_y = padding
+    
+    title_font_size = max(int(height * 0.15), 36)
+    title_font = _load_font(title_font_size)
+    title = payload.get("title", "Current Conditions")
+    draw.text((inner_left, current_y), title, font=title_font, fill=primary_color)
+    current_y += title_font_size + max(int(height * 0.04), 16)
+    
+    # Calculate space needed at bottom for credit line
+    credit_font_size = max(int(height * 0.08), 16)
+    credit_bottom_margin = max(int(height * 0.03), 10)
+    credit_top_spacing = max(int(height * 0.08), 30)
+    bottom_reserved = credit_font_size + credit_top_spacing + credit_bottom_margin + padding
+    
+    remaining_height = height - current_y - bottom_reserved
+    available_width = width - inner_left - padding
+    
+    # --- 5-Column Layout ---
+    num_columns = 5
+    column_width = available_width // num_columns
+    column_spacing = max(int(column_width * 0.05), 10)
+    content_width = column_width - column_spacing
+    
+    # Font sizes - use same size as temperature for all column text
+    primary_font_size = max(int(remaining_height * 0.13), 18)
+    primary_font = _load_font(primary_font_size)
+    icon_size = max(int(remaining_height * 0.35), 48)
+    
+    # --- Column 1: Temperature & Sky ---
+    col1_x = inner_left
+    col1_center_x = col1_x + content_width // 2
+    
+    # Weather icon
+    icon_name = payload.get("icon_name", "unknown.png")
+    condition_icon = _load_icon(icon_name, icon_size)
+    icon_x = col1_center_x - icon_size // 2
+    icon_y = current_y + max(int(height * 0.03), 12)
+    image.paste(condition_icon, (icon_x, icon_y), condition_icon)
+    
+    # Temperature
+    content_y = icon_y + icon_size + max(int(height * 0.02), 8)
+    temperature = payload.get("temperature", "--")
+    temp_width, temp_height = _text_size(primary_font, temperature)
+    draw.text((col1_center_x - temp_width // 2, content_y), temperature, font=primary_font, fill=primary_color)
+    content_y += temp_height + max(int(height * 0.015), 6)
+    
+    # Conditions
+    conditions = payload.get("conditions", "")
+    cond_width, cond_height = _text_size(primary_font, conditions)
+    draw.text((col1_center_x - cond_width // 2, content_y), conditions, font=primary_font, fill=primary_color)
+    content_y += cond_height + max(int(height * 0.015), 6)
+    
+    # Feels Like
+    feels_like = payload.get("feels_like", "--")
+    feels_text = f"Feels Like"
+    feels_width, _ = _text_size(primary_font, feels_text)
+    draw.text((col1_center_x - feels_width // 2, content_y), feels_text, font=primary_font, fill=primary_color)
+    content_y += primary_font_size + 4
+    feels_val_width, _ = _text_size(primary_font, feels_like)
+    draw.text((col1_center_x - feels_val_width // 2, content_y), feels_like, font=primary_font, fill=primary_color)
+    
+    # --- Column 2: Wind ---
+    col2_x = inner_left + column_width
+    col2_center_x = col2_x + content_width // 2
+    content_y = current_y + max(int(height * 0.03), 12)
+    
+    # Wind label
+    wind_label = "Wind"
+    wind_label_width, _ = _text_size(primary_font, wind_label)
+    draw.text((col2_center_x - wind_label_width // 2, content_y), wind_label, font=primary_font, fill=primary_color)
+    content_y += primary_font_size + max(int(height * 0.015), 6)
+    
+    # Wind value with icon
+    wind = payload.get("wind", "--")
+    wind_icon = _load_icon("wind.png", int(primary_font_size * 0.9))
+    wind_val_width, wind_val_height = _text_size(primary_font, wind)
+    icon_spacing = 8
+    total_width = wind_icon.size[0] + icon_spacing + wind_val_width
+    start_x = col2_center_x - total_width // 2
+    icon_y = content_y + (wind_val_height - wind_icon.size[1]) // 2
+    image.paste(wind_icon, (int(start_x), int(icon_y)), wind_icon)
+    draw.text((start_x + wind_icon.size[0] + icon_spacing, content_y), wind, font=primary_font, fill=primary_color)
+    content_y += wind_val_height + max(int(height * 0.02), 8)
+    
+    # Wind Gust label
+    gust_label = "Wind Gust"
+    gust_label_width, _ = _text_size(primary_font, gust_label)
+    draw.text((col2_center_x - gust_label_width // 2, content_y), gust_label, font=primary_font, fill=primary_color)
+    content_y += primary_font_size + 4
+    
+    # Wind Gust value
+    wind_gust = payload.get("wind_gust", "--")
+    gust_width, _ = _text_size(primary_font, wind_gust)
+    draw.text((col2_center_x - gust_width // 2, content_y), wind_gust, font=primary_font, fill=primary_color)
+    
+    # --- Column 3: Humidity / Dew Point ---
+    col3_x = inner_left + (column_width * 2)
+    col3_center_x = col3_x + content_width // 2
+    content_y = current_y + max(int(height * 0.03), 12)
+    
+    # Humidity label
+    hum_label = "Humidity"
+    hum_label_width, _ = _text_size(primary_font, hum_label)
+    draw.text((col3_center_x - hum_label_width // 2, content_y), hum_label, font=primary_font, fill=primary_color)
+    content_y += primary_font_size + max(int(height * 0.015), 6)
+    
+    # Humidity value with icon
+    humidity = payload.get("humidity", "--")
+    hum_icon = _load_icon("humidity.png", int(primary_font_size * 0.9))
+    hum_val_width, hum_val_height = _text_size(primary_font, humidity)
+    total_width = hum_icon.size[0] + icon_spacing + hum_val_width
+    start_x = col3_center_x - total_width // 2
+    icon_y = content_y + (hum_val_height - hum_icon.size[1]) // 2
+    image.paste(hum_icon, (int(start_x), int(icon_y)), hum_icon)
+    draw.text((start_x + hum_icon.size[0] + icon_spacing, content_y), humidity, font=primary_font, fill=primary_color)
+    content_y += hum_val_height + max(int(height * 0.02), 8)
+    
+    # Dew Point label
+    dew_label = "Dew Point"
+    dew_label_width, _ = _text_size(primary_font, dew_label)
+    draw.text((col3_center_x - dew_label_width // 2, content_y), dew_label, font=primary_font, fill=primary_color)
+    content_y += primary_font_size + 4
+    
+    # Dew Point value
+    dew_point = payload.get("dew_point", "--")
+    dew_width, _ = _text_size(primary_font, dew_point)
+    draw.text((col3_center_x - dew_width // 2, content_y), dew_point, font=primary_font, fill=primary_color)
+    
+    # --- Column 4: Sun Exposure ---
+    col4_x = inner_left + (column_width * 3)
+    col4_center_x = col4_x + content_width // 2
+    content_y = current_y + max(int(height * 0.03), 12)
+    
+    # UV Index label
+    uv_label = "UV Index"
+    uv_label_width, _ = _text_size(primary_font, uv_label)
+    draw.text((col4_center_x - uv_label_width // 2, content_y), uv_label, font=primary_font, fill=primary_color)
+    content_y += primary_font_size + max(int(height * 0.015), 6)
+    
+    # UV value
+    uv = payload.get("uv", "--")
+    uv_width, uv_height = _text_size(primary_font, uv)
+    draw.text((col4_center_x - uv_width // 2, content_y), uv, font=primary_font, fill=primary_color)
+    content_y += uv_height + max(int(height * 0.02), 8)
+    
+    # Solar label
+    solar_label = "Solar"
+    solar_label_width, _ = _text_size(primary_font, solar_label)
+    draw.text((col4_center_x - solar_label_width // 2, content_y), solar_label, font=primary_font, fill=primary_color)
+    content_y += primary_font_size + 4
+    
+    # Solar value
+    solar = payload.get("solar", "--")
+    solar_width, _ = _text_size(primary_font, solar)
+    draw.text((col4_center_x - solar_width // 2, content_y), solar, font=primary_font, fill=primary_color)
+    
+    # --- Column 5: Pressure & Rain ---
+    col5_x = inner_left + (column_width * 4)
+    col5_center_x = col5_x + content_width // 2
+    content_y = current_y + max(int(height * 0.03), 12)
+    
+    # Pressure label
+    press_label = "Pressure"
+    press_label_width, _ = _text_size(primary_font, press_label)
+    draw.text((col5_center_x - press_label_width // 2, content_y), press_label, font=primary_font, fill=primary_color)
+    content_y += primary_font_size + max(int(height * 0.015), 6)
+    
+    # Pressure value
+    pressure = payload.get("pressure", "--")
+    press_width, press_height = _text_size(primary_font, pressure)
+    draw.text((col5_center_x - press_width // 2, content_y), pressure, font=primary_font, fill=primary_color)
+    content_y += press_height + max(int(height * 0.02), 8)
+    
+    # Rain Today label
+    rain_label = "Rain Today"
+    rain_label_width, _ = _text_size(primary_font, rain_label)
+    draw.text((col5_center_x - rain_label_width // 2, content_y), rain_label, font=primary_font, fill=primary_color)
+    content_y += primary_font_size + 4
+    
+    # Rain Today value
+    rain_today = payload.get("rain_today", "--")
+    rain_width, _ = _text_size(primary_font, rain_today)
+    draw.text((col5_center_x - rain_width // 2, content_y), rain_today, font=primary_font, fill=primary_color)
+    
+    # Add credit line at the bottom
+    location = payload.get("location_name", "")
+    station_id = payload.get("station_id", "")
+    current_time = datetime.now().strftime("%I:%M %p").lstrip("0")
+    
+    if location and station_id:
+        credit_text = f"{location} (Station {station_id}) | Tempest Weather Network | {current_time}"
+    elif station_id:
+        credit_text = f"Station {station_id} | Tempest Weather Network | {current_time}"
+    else:
+        credit_text = f"Data from Tempest Weather Network | {current_time}"
+    
+    credit_font = _load_font(credit_font_size)
+    credit_color = (255, 255, 255, 255)
+    
+    credit_width, credit_height = _text_size(credit_font, credit_text)
+    credit_x = (width - credit_width) // 2
+    credit_y = height - credit_height - max(int(height * 0.03), 10)
+    
+    for offset in [(0, 0), (1, 0), (0, 1), (1, 1)]:
+        draw.text((credit_x + offset[0], credit_y + offset[1]), credit_text, font=credit_font, fill=credit_color)
+    
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
