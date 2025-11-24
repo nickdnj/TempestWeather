@@ -6,6 +6,7 @@ matching the style of the current conditions overlay.
 from __future__ import annotations
 
 import io
+import math
 import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -81,6 +82,173 @@ FORECAST_ICON_MAP = {
     "thunderstorm": "thunderstorm.png",
     "windy": "wind.png",
 }
+
+
+def _generate_temperature_icon(size: int) -> Image.Image:
+    """Generate a simple thermometer icon."""
+    icon = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(icon)
+    
+    # White outline color
+    outline_color = (255, 255, 255, 255)
+    line_width = max(2, size // 32)
+    
+    # Thermometer bulb (bottom circle)
+    bulb_size = size // 3
+    bulb_center = (size // 2, size - bulb_size // 2 - line_width)
+    bulb_bbox = [
+        bulb_center[0] - bulb_size // 2,
+        bulb_center[1] - bulb_size // 2,
+        bulb_center[0] + bulb_size // 2,
+        bulb_center[1] + bulb_size // 2
+    ]
+    
+    # Draw bulb outline
+    draw.ellipse(bulb_bbox, outline=outline_color, width=line_width)
+    
+    # Thermometer stem (rectangle)
+    stem_width = size // 6
+    stem_left = size // 2 - stem_width // 2
+    stem_right = size // 2 + stem_width // 2
+    stem_top = size // 4
+    stem_bottom = bulb_center[1] - bulb_size // 2
+    
+    # Draw stem outline (rectangular)
+    draw.rectangle(
+        [stem_left, stem_top, stem_right, stem_bottom],
+        outline=outline_color,
+        width=line_width
+    )
+    
+    # Small indicator lines on stem
+    num_markers = 3
+    for i in range(1, num_markers):
+        y = stem_top + (stem_bottom - stem_top) * i / num_markers
+        marker_len = stem_width * 1.5
+        draw.line(
+            [stem_left - marker_len // 2, y, stem_left, y],
+            fill=outline_color,
+            width=max(1, line_width // 2)
+        )
+    
+    return icon
+
+
+def _generate_uv_index_icon(size: int) -> Image.Image:
+    """Generate a simple sun with rays icon for UV index."""
+    icon = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(icon)
+    
+    # White outline color
+    outline_color = (255, 255, 255, 255)
+    line_width = max(2, size // 32)
+    
+    center_x = size // 2
+    center_y = size // 2
+    sun_radius = size // 4
+    
+    # Draw sun circle
+    sun_bbox = [
+        center_x - sun_radius,
+        center_y - sun_radius,
+        center_x + sun_radius,
+        center_y + sun_radius
+    ]
+    draw.ellipse(sun_bbox, outline=outline_color, width=line_width)
+    
+    # Draw rays (8 rays)
+    num_rays = 8
+    ray_length = size // 8
+    for i in range(num_rays):
+        # Calculate angle for each ray
+        angle_deg = i * (360 / num_rays)
+        angle_rad = math.radians(angle_deg)
+        
+        # Calculate ray start and end points
+        start_radius = sun_radius + line_width // 2
+        end_radius = sun_radius + ray_length
+        
+        start_x = center_x + start_radius * math.cos(angle_rad)
+        start_y = center_y + start_radius * math.sin(angle_rad)
+        end_x = center_x + end_radius * math.cos(angle_rad)
+        end_y = center_y + end_radius * math.sin(angle_rad)
+        
+        draw.line([start_x, start_y, end_x, end_y], fill=outline_color, width=line_width)
+    
+    return icon
+
+
+def _generate_pressure_icon(size: int) -> Image.Image:
+    """Generate a simple barometer/arrow icon for pressure."""
+    icon = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(icon)
+    
+    # White outline color
+    outline_color = (255, 255, 255, 255)
+    line_width = max(2, size // 32)
+    
+    center_x = size // 2
+    center_y = size // 2
+    
+    # Draw circular gauge
+    gauge_radius = size // 3
+    gauge_bbox = [
+        center_x - gauge_radius,
+        center_y - gauge_radius,
+        center_x + gauge_radius,
+        center_y + gauge_radius
+    ]
+    draw.arc(gauge_bbox, start=180, end=360, fill=outline_color, width=line_width)
+    
+    # Draw arrow pointing up (indicating pressure measurement)
+    arrow_length = gauge_radius * 0.8
+    arrow_start_y = center_y
+    arrow_end_y = center_y - arrow_length
+    
+    # Arrow shaft
+    draw.line(
+        [center_x, arrow_start_y, center_x, arrow_end_y],
+        fill=outline_color,
+        width=line_width
+    )
+    
+    # Arrowhead (pointing up) - draw as lines for better outline effect
+    arrowhead_size = size // 8
+    arrowhead_left = (center_x - arrowhead_size // 2, arrow_end_y + arrowhead_size // 2)
+    arrowhead_right = (center_x + arrowhead_size // 2, arrow_end_y + arrowhead_size // 2)
+    arrowhead_top = (center_x, arrow_end_y)
+    
+    # Draw arrowhead outline
+    draw.line([arrowhead_top, arrowhead_left], fill=outline_color, width=line_width)
+    draw.line([arrowhead_top, arrowhead_right], fill=outline_color, width=line_width)
+    draw.line([arrowhead_left, arrowhead_right], fill=outline_color, width=line_width)
+    
+    return icon
+
+
+def _ensure_generated_icon(icon_name: str) -> None:
+    """Ensure a generated icon exists on disk, creating it if necessary."""
+    icon_path = os.path.join(ICONS_DIR, icon_name)
+    
+    # If icon already exists, skip generation
+    if os.path.isfile(icon_path):
+        return
+    
+    # Generate icon if it's one of our generated types
+    size = 64  # Standard size for on-disk storage, will be resized as needed
+    
+    # Ensure icons directory exists
+    os.makedirs(ICONS_DIR, exist_ok=True)
+    
+    if icon_name == "temperature.png":
+        icon = _generate_temperature_icon(size)
+        icon.save(icon_path, "PNG")
+    elif icon_name == "uv_index.png":
+        icon = _generate_uv_index_icon(size)
+        icon.save(icon_path, "PNG")
+    elif icon_name == "pressure.png":
+        icon = _generate_pressure_icon(size)
+        icon.save(icon_path, "PNG")
 
 
 def fetch_forecast_data(units: str = "imperial") -> Optional[Dict]:
@@ -1832,11 +2000,12 @@ def render_current_conditions_super_overlay(
 ) -> io.BytesIO:
     """
     Render super-expanded current conditions overlay with 5-column layout.
-    Column 1: Icon, Temperature, Conditions, Feels Like
-    Column 2: Wind, Wind Gust
-    Column 3: Humidity, Dew Point
-    Column 4: UV Index, Solar
-    Column 5: Pressure, Rain Today
+    Title: "Current Conditions" with weather condition icon next to it (same height).
+    Column 1: Temperature label, temperature icon, Temperature, Conditions, Feels Like
+    Column 2: Wind label, wind icon, Wind speed/direction, Wind Gust
+    Column 3: Humidity label, humidity icon, Humidity, Dew Point
+    Column 4: UV Index label, UV index icon, UV Index value, Solar
+    Column 5: Pressure label, pressure icon, Pressure, Rain Today
     
     Args:
         payload: Super-expanded current conditions data
@@ -1857,14 +2026,27 @@ def render_current_conditions_super_overlay(
     padding = max(int(height * 0.06), 24)
     primary_color = style["text"]
     
-    # Title
+    # Title with icon next to it
     inner_left = padding * 2
     current_y = padding
     
     title_font_size = max(int(height * 0.15), 36)
     title_font = _load_font(title_font_size)
     title = payload.get("title", "Current Conditions")
+    
+    # Draw title text
     draw.text((inner_left, current_y), title, font=title_font, fill=primary_color)
+    title_width, title_height = _text_size(title_font, title)
+    
+    # Place weather condition icon to the right of title (same height)
+    icon_name = payload.get("icon_name", "unknown.png")
+    title_icon_size = title_font_size  # Match title height
+    condition_icon = _load_icon(icon_name, title_icon_size)
+    title_icon_spacing = max(int(title_font_size * 0.2), 8)
+    title_icon_x = inner_left + title_width + title_icon_spacing
+    title_icon_y = current_y + (title_height - title_icon_size) // 2
+    image.paste(condition_icon, (int(title_icon_x), int(title_icon_y)), condition_icon)
+    
     current_y += title_font_size + max(int(height * 0.04), 16)
     
     # Calculate space needed at bottom for credit line
@@ -1882,24 +2064,34 @@ def render_current_conditions_super_overlay(
     column_spacing = max(int(column_width * 0.05), 10)
     content_width = column_width - column_spacing
     
-    # Font sizes - use same size as temperature for all column text
+    # Font sizes - use same size for all column text
     primary_font_size = max(int(remaining_height * 0.13), 18)
     primary_font = _load_font(primary_font_size)
-    icon_size = max(int(remaining_height * 0.35), 48)
+    column_icon_size = max(int(remaining_height * 0.35), 48)
     
-    # --- Column 1: Temperature & Sky ---
+    # Ensure generated icons exist
+    _ensure_generated_icon("temperature.png")
+    _ensure_generated_icon("uv_index.png")
+    _ensure_generated_icon("pressure.png")
+    
+    # --- Column 1: Temperature ---
     col1_x = inner_left
     col1_center_x = col1_x + content_width // 2
+    content_y = current_y + max(int(height * 0.03), 12)
     
-    # Weather icon
-    icon_name = payload.get("icon_name", "unknown.png")
-    condition_icon = _load_icon(icon_name, icon_size)
-    icon_x = col1_center_x - icon_size // 2
-    icon_y = current_y + max(int(height * 0.03), 12)
-    image.paste(condition_icon, (icon_x, icon_y), condition_icon)
+    # Temperature label
+    temp_label = "Temperature"
+    temp_label_width, _ = _text_size(primary_font, temp_label)
+    draw.text((col1_center_x - temp_label_width // 2, content_y), temp_label, font=primary_font, fill=primary_color)
+    content_y += primary_font_size + max(int(height * 0.015), 6)
     
-    # Temperature
-    content_y = icon_y + icon_size + max(int(height * 0.02), 8)
+    # Temperature icon
+    temp_icon = _load_icon("temperature.png", column_icon_size)
+    temp_icon_x = col1_center_x - column_icon_size // 2
+    image.paste(temp_icon, (temp_icon_x, content_y), temp_icon)
+    content_y += column_icon_size + max(int(height * 0.02), 8)
+    
+    # Temperature value
     temperature = payload.get("temperature", "--")
     temp_width, temp_height = _text_size(primary_font, temperature)
     draw.text((col1_center_x - temp_width // 2, content_y), temperature, font=primary_font, fill=primary_color)
@@ -1913,7 +2105,7 @@ def render_current_conditions_super_overlay(
     
     # Feels Like
     feels_like = payload.get("feels_like", "--")
-    feels_text = f"Feels Like"
+    feels_text = "Feels Like"
     feels_width, _ = _text_size(primary_font, feels_text)
     draw.text((col1_center_x - feels_width // 2, content_y), feels_text, font=primary_font, fill=primary_color)
     content_y += primary_font_size + 4
@@ -1931,16 +2123,16 @@ def render_current_conditions_super_overlay(
     draw.text((col2_center_x - wind_label_width // 2, content_y), wind_label, font=primary_font, fill=primary_color)
     content_y += primary_font_size + max(int(height * 0.015), 6)
     
-    # Wind value with icon
+    # Wind icon (larger size to match other column icons)
+    wind_icon = _load_icon("wind.png", column_icon_size)
+    wind_icon_x = col2_center_x - column_icon_size // 2
+    image.paste(wind_icon, (wind_icon_x, content_y), wind_icon)
+    content_y += column_icon_size + max(int(height * 0.02), 8)
+    
+    # Wind value
     wind = payload.get("wind", "--")
-    wind_icon = _load_icon("wind.png", int(primary_font_size * 0.9))
     wind_val_width, wind_val_height = _text_size(primary_font, wind)
-    icon_spacing = 8
-    total_width = wind_icon.size[0] + icon_spacing + wind_val_width
-    start_x = col2_center_x - total_width // 2
-    icon_y = content_y + (wind_val_height - wind_icon.size[1]) // 2
-    image.paste(wind_icon, (int(start_x), int(icon_y)), wind_icon)
-    draw.text((start_x + wind_icon.size[0] + icon_spacing, content_y), wind, font=primary_font, fill=primary_color)
+    draw.text((col2_center_x - wind_val_width // 2, content_y), wind, font=primary_font, fill=primary_color)
     content_y += wind_val_height + max(int(height * 0.02), 8)
     
     # Wind Gust label
@@ -1965,15 +2157,16 @@ def render_current_conditions_super_overlay(
     draw.text((col3_center_x - hum_label_width // 2, content_y), hum_label, font=primary_font, fill=primary_color)
     content_y += primary_font_size + max(int(height * 0.015), 6)
     
-    # Humidity value with icon
+    # Humidity icon (larger size to match other column icons)
+    hum_icon = _load_icon("humidity.png", column_icon_size)
+    hum_icon_x = col3_center_x - column_icon_size // 2
+    image.paste(hum_icon, (hum_icon_x, content_y), hum_icon)
+    content_y += column_icon_size + max(int(height * 0.02), 8)
+    
+    # Humidity value
     humidity = payload.get("humidity", "--")
-    hum_icon = _load_icon("humidity.png", int(primary_font_size * 0.9))
     hum_val_width, hum_val_height = _text_size(primary_font, humidity)
-    total_width = hum_icon.size[0] + icon_spacing + hum_val_width
-    start_x = col3_center_x - total_width // 2
-    icon_y = content_y + (hum_val_height - hum_icon.size[1]) // 2
-    image.paste(hum_icon, (int(start_x), int(icon_y)), hum_icon)
-    draw.text((start_x + hum_icon.size[0] + icon_spacing, content_y), humidity, font=primary_font, fill=primary_color)
+    draw.text((col3_center_x - hum_val_width // 2, content_y), humidity, font=primary_font, fill=primary_color)
     content_y += hum_val_height + max(int(height * 0.02), 8)
     
     # Dew Point label
@@ -1987,7 +2180,7 @@ def render_current_conditions_super_overlay(
     dew_width, _ = _text_size(primary_font, dew_point)
     draw.text((col3_center_x - dew_width // 2, content_y), dew_point, font=primary_font, fill=primary_color)
     
-    # --- Column 4: Sun Exposure ---
+    # --- Column 4: UV Index / Solar ---
     col4_x = inner_left + (column_width * 3)
     col4_center_x = col4_x + content_width // 2
     content_y = current_y + max(int(height * 0.03), 12)
@@ -1997,6 +2190,12 @@ def render_current_conditions_super_overlay(
     uv_label_width, _ = _text_size(primary_font, uv_label)
     draw.text((col4_center_x - uv_label_width // 2, content_y), uv_label, font=primary_font, fill=primary_color)
     content_y += primary_font_size + max(int(height * 0.015), 6)
+    
+    # UV Index icon
+    uv_icon = _load_icon("uv_index.png", column_icon_size)
+    uv_icon_x = col4_center_x - column_icon_size // 2
+    image.paste(uv_icon, (uv_icon_x, content_y), uv_icon)
+    content_y += column_icon_size + max(int(height * 0.02), 8)
     
     # UV value
     uv = payload.get("uv", "--")
@@ -2025,6 +2224,12 @@ def render_current_conditions_super_overlay(
     press_label_width, _ = _text_size(primary_font, press_label)
     draw.text((col5_center_x - press_label_width // 2, content_y), press_label, font=primary_font, fill=primary_color)
     content_y += primary_font_size + max(int(height * 0.015), 6)
+    
+    # Pressure icon
+    press_icon = _load_icon("pressure.png", column_icon_size)
+    press_icon_x = col5_center_x - column_icon_size // 2
+    image.paste(press_icon, (press_icon_x, content_y), press_icon)
+    content_y += column_icon_size + max(int(height * 0.02), 8)
     
     # Pressure value
     pressure = payload.get("pressure", "--")
