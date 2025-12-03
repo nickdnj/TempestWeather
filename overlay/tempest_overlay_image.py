@@ -447,7 +447,10 @@ def render_overlay_image(
     
     # Get current time in local timezone (from payload's updated timestamp)
     from datetime import datetime
-    current_time = datetime.now().strftime("%a %b %d %I:%M%p").lstrip("0")  # "Wed Dec 3 1:55PM"
+    now = datetime.now()
+    day = str(now.day)  # Remove leading zero from day
+    hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
+    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
     
     # Build credit text with location, station info, and timestamp
     if location and station_id:

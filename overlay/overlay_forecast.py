@@ -686,7 +686,10 @@ def render_daily_forecast_overlay(
     station_id = payload.get("station_id", "")
     
     # Get current time in local timezone
-    current_time = datetime.now().strftime("%a %b %d %I:%M%p").lstrip("0")  # "Wed Dec 3 1:55PM"
+    now = datetime.now()
+    day = str(now.day)  # Remove leading zero from day
+    hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
+    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
     
     # Build credit text with location, station info, and timestamp
     if location and station_id:
@@ -842,7 +845,10 @@ def render_5day_forecast_overlay(
     station_id = payload.get("station_id", "")
     
     # Get current time in local timezone
-    current_time = datetime.now().strftime("%a %b %d %I:%M%p").lstrip("0")  # "Wed Dec 3 1:55PM"
+    now = datetime.now()
+    day = str(now.day)  # Remove leading zero from day
+    hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
+    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
     
     # Build credit text with location, station info, and timestamp
     if location and station_id:
@@ -1007,7 +1013,10 @@ def render_5hour_forecast_overlay(
     station_id = payload.get("station_id", "")
     
     # Get current time in local timezone
-    current_time = datetime.now().strftime("%a %b %d %I:%M%p").lstrip("0")  # "Wed Dec 3 1:55PM"
+    now = datetime.now()
+    day = str(now.day)  # Remove leading zero from day
+    hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
+    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
     
     # Build credit text with location, station info, and timestamp
     if location and station_id:
@@ -1218,7 +1227,10 @@ def render_current_conditions_overlay(
     station_id = payload.get("station_id", "")
     
     # Get current time in local timezone
-    current_time = datetime.now().strftime("%a %b %d %I:%M%p").lstrip("0")  # "Wed Dec 3 1:55PM"
+    now = datetime.now()
+    day = str(now.day)  # Remove leading zero from day
+    hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
+    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
     
     # Build credit text with location, station info, and timestamp
     if location and station_id:
@@ -1506,7 +1518,10 @@ def render_tides_overlay(
         draw.text((tide_time_x, content_y), tide_time, font=tide_time_font, fill=primary_color)
     
     # Add credit line at the bottom with location and timestamp
-    current_time = datetime.now().strftime("%a %b %d %I:%M%p").lstrip("0")  # "Wed Dec 3 1:55PM"
+    now = datetime.now()
+    day = str(now.day)  # Remove leading zero from day
+    hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
+    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
     
     # Get location from Tempest API (for consistent location across all overlays)
     forecast_data = fetch_forecast_data("imperial")
@@ -1814,7 +1829,10 @@ def render_current_conditions_expanded_overlay(
     # Add credit line at the bottom
     location = payload.get("location_name", "")
     station_id = payload.get("station_id", "")
-    current_time = datetime.now().strftime("%a %b %d %I:%M%p").lstrip("0")  # "Wed Dec 3 1:55PM"
+    now = datetime.now()
+    day = str(now.day)  # Remove leading zero from day
+    hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
+    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
     
     if location and station_id:
         credit_text = f"{location} (Station {station_id}) | Tempest Weather Network | {current_time}"
@@ -2251,7 +2269,10 @@ def render_current_conditions_super_overlay(
     # Add credit line at the bottom
     location = payload.get("location_name", "")
     station_id = payload.get("station_id", "")
-    current_time = datetime.now().strftime("%a %b %d %I:%M%p").lstrip("0")  # "Wed Dec 3 1:55PM"
+    now = datetime.now()
+    day = str(now.day)  # Remove leading zero from day
+    hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
+    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
     
     if location and station_id:
         credit_text = f"{location} (Station {station_id}) | Tempest Weather Network | {current_time}"
@@ -2671,7 +2692,10 @@ def render_fishing_report_overlay(
     # Credit line
     location = payload.get("location_name", "")
     tide_station_name = payload.get("tide_station_name", "")
-    current_time = datetime.now().strftime("%a %b %d %I:%M%p").lstrip("0")  # "Wed Dec 3 1:55PM"
+    now = datetime.now()
+    day = str(now.day)  # Remove leading zero from day
+    hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
+    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
     
     if tide_station_name:
         credit_text = f"{location} | Tide: {tide_station_name} | {current_time}"
