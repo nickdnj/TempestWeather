@@ -689,7 +689,7 @@ def render_daily_forecast_overlay(
     now = datetime.now()
     day = str(now.day)  # Remove leading zero from day
     hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
-    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
+    current_time = f"{now.strftime('%a %b')} {day}, {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3, 1:55PM"
     
     # Build credit text with location, station info, and timestamp
     if location and station_id:
@@ -848,7 +848,7 @@ def render_5day_forecast_overlay(
     now = datetime.now()
     day = str(now.day)  # Remove leading zero from day
     hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
-    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
+    current_time = f"{now.strftime('%a %b')} {day}, {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3, 1:55PM"
     
     # Build credit text with location, station info, and timestamp
     if location and station_id:
@@ -1016,7 +1016,7 @@ def render_5hour_forecast_overlay(
     now = datetime.now()
     day = str(now.day)  # Remove leading zero from day
     hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
-    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
+    current_time = f"{now.strftime('%a %b')} {day}, {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3, 1:55PM"
     
     # Build credit text with location, station info, and timestamp
     if location and station_id:
@@ -1230,7 +1230,7 @@ def render_current_conditions_overlay(
     now = datetime.now()
     day = str(now.day)  # Remove leading zero from day
     hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
-    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
+    current_time = f"{now.strftime('%a %b')} {day}, {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3, 1:55PM"
     
     # Build credit text with location, station info, and timestamp
     if location and station_id:
@@ -1521,7 +1521,7 @@ def render_tides_overlay(
     now = datetime.now()
     day = str(now.day)  # Remove leading zero from day
     hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
-    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
+    current_time = f"{now.strftime('%a %b')} {day}, {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3, 1:55PM"
     
     # Get location from Tempest API (for consistent location across all overlays)
     forecast_data = fetch_forecast_data("imperial")
@@ -1832,7 +1832,7 @@ def render_current_conditions_expanded_overlay(
     now = datetime.now()
     day = str(now.day)  # Remove leading zero from day
     hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
-    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
+    current_time = f"{now.strftime('%a %b')} {day}, {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3, 1:55PM"
     
     if location and station_id:
         credit_text = f"{location} (Station {station_id}) | Tempest Weather Network | {current_time}"
@@ -2272,7 +2272,7 @@ def render_current_conditions_super_overlay(
     now = datetime.now()
     day = str(now.day)  # Remove leading zero from day
     hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
-    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
+    current_time = f"{now.strftime('%a %b')} {day}, {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3, 1:55PM"
     
     if location and station_id:
         credit_text = f"{location} (Station {station_id}) | Tempest Weather Network | {current_time}"
@@ -2695,7 +2695,7 @@ def render_fishing_report_overlay(
     now = datetime.now()
     day = str(now.day)  # Remove leading zero from day
     hour = str(int(now.strftime("%I")))  # Remove leading zero from hour
-    current_time = f"{now.strftime('%a %b')} {day} {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3 1:55PM"
+    current_time = f"{now.strftime('%a %b')} {day}, {hour}:{now.strftime('%M%p')}"  # "Wed Dec 3, 1:55PM"
     
     if tide_station_name:
         credit_text = f"{location} | Tide: {tide_station_name} | {current_time}"
