@@ -1,6 +1,8 @@
 import os
+from datetime import datetime, timezone
 
-from flask import Flask, Response, request, send_file
+from flask import Flask, Response, request, send_file, jsonify
+from flask_cors import CORS
 
 from tempest_listener import get_latest_observation
 from overlay_forecast import (
@@ -18,9 +20,12 @@ from overlay_forecast import (
     render_tides_overlay,
     build_fishing_report_payload,
     render_fishing_report_overlay,
+    fetch_forecast_data,
 )
 
 app = Flask(__name__)
+# Enable CORS for API endpoints (useful for cross-container browser access)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 200
@@ -50,6 +55,7 @@ def index() -> Response:
         "  /overlay/5day - 5-day forecast overlay\n"
         "  /overlay/tides - Multi-station tide forecast (up to 4 stations)\n"
         "  /overlay/fishing - Fishing report for Shrewsbury River (tide, barometer, moon, water temp, solunar)\n"
+        "  /api/data - JSON API endpoint for all weather, tide, and astronomy data (units: imperial/metric)\n"
         "Query parameters: width, height, theme (dark/light), units (imperial/metric)\n"
         "  /overlay/tides accepts: station (repeatable, e.g., ?station=8531942&station=8534720)",
         mimetype="text/plain",
@@ -260,6 +266,153 @@ def overlay_fishing():
     response = send_file(image_stream, mimetype="image/png")
     response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
+
+
+@app.route("/api/data")
+def api_data():
+    """
+    Return all weather/environmental data as JSON for external APIs.
+    
+    Query parameters:
+        units (optional): imperial (default) or metric
+    
+    Returns JSON with current conditions, fishing data, tides, and 5-day forecast.
+    """
+    units = request.args.get("units", "imperial")
+    
+    # Get latest observation for fishing report
+    observation = get_latest_observation()
+    
+    # Initialize response structure with defaults
+    response_data = {
+        "current": {},
+        "fishing": {},
+        "tides": {"stations": []},
+        "forecast_5day": {"days": []},
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    }
+    
+    # 1. Get current conditions data
+    try:
+        expanded_payload = build_current_conditions_expanded_payload(observation, units)
+        super_payload = build_current_conditions_super_payload(observation, units)
+        
+        response_data["current"] = {
+            "temperature": expanded_payload.get("temperature", "--"),
+            "feels_like": expanded_payload.get("feels_like", "--"),
+            "humidity": expanded_payload.get("humidity", "--"),
+            "wind": expanded_payload.get("wind", "--"),
+            "wind_gust": super_payload.get("wind_gust", "--"),
+            "conditions": expanded_payload.get("conditions", "--"),
+            "pressure": expanded_payload.get("pressure", "--"),
+            "uv_index": expanded_payload.get("uv", "--"),
+            "rain_today": expanded_payload.get("rain_today", "--"),
+            "location_name": expanded_payload.get("location_name", "Unknown")
+        }
+    except Exception:
+        # Graceful fallback for current conditions
+        response_data["current"] = {
+            "temperature": "--",
+            "feels_like": "--",
+            "humidity": "--",
+            "wind": "--",
+            "wind_gust": "--",
+            "conditions": "--",
+            "pressure": "--",
+            "uv_index": "--",
+            "rain_today": "--",
+            "location_name": "Unknown"
+        }
+    
+    # 2. Get fishing data
+    try:
+        fishing_payload = build_fishing_report_payload(observation, units)
+        
+        response_data["fishing"] = {
+            "tide_stage": fishing_payload.get("tide_stage", "--"),
+            "next_tide_event": fishing_payload.get("tide_next_event", "--"),
+            "next_tide_time": fishing_payload.get("tide_next_time", "--"),
+            "tide_height": fishing_payload.get("tide_height", "--"),
+            "moon_phase": fishing_payload.get("moon_phase", "--"),
+            "moon_illumination": fishing_payload.get("moon_illumination", "--"),
+            "water_temp": fishing_payload.get("water_temp", "--"),
+            "pressure_trend": fishing_payload.get("pressure_trend", "--"),
+            "solunar_major": fishing_payload.get("solunar_major", "--"),
+            "solunar_minor": fishing_payload.get("solunar_minor", "--")
+        }
+    except Exception:
+        # Graceful fallback for fishing data
+        response_data["fishing"] = {
+            "tide_stage": "--",
+            "next_tide_event": "--",
+            "next_tide_time": "--",
+            "tide_height": "--",
+            "moon_phase": "--",
+            "moon_illumination": "--",
+            "water_temp": "--",
+            "pressure_trend": "--",
+            "solunar_major": "--",
+            "solunar_minor": "--"
+        }
+    
+    # 3. Get tides data (using default fishing tide station)
+    try:
+        tide_station = os.getenv("FISHING_TIDE_STATION", "8531662")
+        tides_payload = build_tides_payload([tide_station])
+        
+        if not tides_payload.get("error") and tides_payload.get("stations"):
+            stations = []
+            for station in tides_payload.get("stations", []):
+                stations.append({
+                    "name": station.get("station_name", "Unknown"),
+                    "tide_type": station.get("tide_type", "--"),
+                    "tide_time": station.get("tide_time", "--")
+                })
+            response_data["tides"]["stations"] = stations
+    except Exception:
+        # Graceful fallback - empty stations array
+        pass
+    
+    # 4. Get 5-day forecast data
+    try:
+        forecast_data = fetch_forecast_data(units)
+        forecast_payload = build_5day_forecast_payload(units)
+        
+        if not forecast_payload.get("error") and forecast_payload.get("days"):
+            days = []
+            daily_forecasts = forecast_data.get("forecast", {}).get("daily", []) if forecast_data else []
+            
+            for i, day in enumerate(forecast_payload.get("days", [])):
+                # Extract date from forecast data
+                date_str = "--"
+                if i < len(daily_forecasts):
+                    day_start = daily_forecasts[i].get("day_start_local")
+                    if day_start:
+                        day_dt = datetime.fromtimestamp(day_start, tz=timezone.utc)
+                        date_str = day_dt.strftime("%Y-%m-%d")
+                
+                # Parse high/low from temp_text like "75/58°F"
+                temp_text = day.get("temp_text", "--")
+                high = "--"
+                low = "--"
+                if "/" in temp_text and "°" in temp_text:
+                    parts = temp_text.split("/")
+                    if len(parts) == 2:
+                        high = parts[0].strip()
+                        low = parts[1].split("°")[0].strip()
+                
+                days.append({
+                    "date": date_str,
+                    "high": high,
+                    "low": low,
+                    "conditions": day.get("conditions", "--")
+                })
+            response_data["forecast_5day"]["days"] = days
+    except Exception:
+        # Graceful fallback - empty days array
+        pass
+    
+    return jsonify(response_data)
 
 
 if __name__ == "__main__":
